@@ -40,7 +40,7 @@ export async function getGlue(path: string, prefix: string, resolver: Resolver, 
         implementations: {
             ...glue.implementations,
         },
-        corsSites: cors ? glue.websites[cors] ?? [] : [],
+        corsSites: cors ? (glue.websites[cors] ?? []) : [],
         env: resolveEnv(env ?? {}, secrets ?? {}, prefix, service, resolver),
         ...provider,
     }
@@ -186,7 +186,7 @@ async function resolveEnv(
         for (const [key, value] of Object.entries(env)) {
             env[key] = value.replaceAll(v.pattern, (substring, ...matches: string[]) => {
                 if (
-                    selfReferencing.find(
+                    selfReferencing.some(
                         r => r.key === key && r.v === v && r.match[0] === substring,
                     )
                 ) {

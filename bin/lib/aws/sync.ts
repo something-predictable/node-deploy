@@ -1,6 +1,6 @@
 import type { Reflection } from '@riddance/host/reflect'
 import { localAwsEnv } from './lite.js'
-import { getApi, syncGateway } from './services/apiGateway.js'
+import { getApi, syncGateway } from './services/api-gateway.js'
 import { getFunctions, syncLambda } from './services/lambda.js'
 import { assignPolicy, getRole, syncRole } from './services/roles.js'
 import { syncTriggers } from './services/triggers.js'

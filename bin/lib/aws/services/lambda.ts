@@ -56,7 +56,7 @@ export async function syncLambda(
         ),
     )
 
-    return currentFunctions.map(fn => ({ id: fn.id, name: fn.name })).concat(created)
+    return [...currentFunctions.map(fn => ({ id: fn.id, name: fn.name })), ...created]
 }
 
 async function zip(code: string) {
@@ -145,11 +145,11 @@ export async function getFunctions(
         .filter(fn => fn.FunctionName.startsWith(fnPrefix))
         .map(fn => ({
             id: fn.FunctionArn,
-            name: fn.FunctionName.substring(fnPrefix.length),
+            name: fn.FunctionName.slice(fnPrefix.length),
             runtime: fn.Runtime,
             memory: fn.MemorySize,
             timeout: fn.Timeout,
-            env: fn.Environment?.Variables ?? [],
+            env: fn.Environment.Variables,
             cpus: fn.Architectures,
             hash: fn.CodeSha256,
         }))
@@ -289,7 +289,7 @@ function lambdaConfig(config: Config, role: string, environment: { [key: string]
 }
 
 function getRuntime(config: Config) {
-    switch (config.nodeVersion?.substring(0, 4)) {
+    switch (config.nodeVersion?.slice(0, 4)) {
         case '>=20':
             return 'nodejs20.x'
         case '>=18':

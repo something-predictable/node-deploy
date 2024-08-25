@@ -98,7 +98,7 @@ async function copyAndPatchProject(
     implementations: { [fromPackage: string]: Implementation },
 ) {
     const hashes: { [source: string]: string } = {}
-    const sourceFiles = (await find(path)).map(f => f.substring(path.length + 1))
+    const sourceFiles = (await find(path)).map(f => f.slice(path.length + 1))
     const serviceFiles = sourceFiles.filter(f => f.endsWith('.js') && !f.includes('/'))
 
     for (const sf of sourceFiles) {
@@ -125,7 +125,7 @@ async function copyAndPatchProject(
     hashes['package.json'] = createHash('sha256').update(updated).digest('base64')
     await writeFile(packageFile, updated)
 
-    return { functions: serviceFiles.map(f => f.substring(0, f.length - 3)), hashes }
+    return { functions: serviceFiles.map(f => f.slice(0, -3)), hashes }
 }
 
 async function mkDirCopyFile(
@@ -163,6 +163,7 @@ async function find(dir: string): Promise<string[]> {
                 !f.endsWith('.gz') &&
                 !f.endsWith('.min.js') &&
                 f !== 'tsconfig.json' &&
+                f !== 'cspell.json' &&
                 f !== 'dictionary.txt' &&
                 f !== 'node_modules' &&
                 f !== 'test' &&
@@ -175,7 +176,7 @@ async function find(dir: string): Promise<string[]> {
         file = dir + '/' + file
         const stats = await stat(file)
         if (stats.isDirectory()) {
-            results = results.concat(await find(file))
+            results = [...results, ...(await find(file))]
         } else {
             results.push(file)
         }
@@ -266,7 +267,6 @@ async function pack(
     map: SourceMap & { version: 3 },
 ) {
     console.log(`minifying ${fn}`)
-    // eslint-disable-next-line camelcase
     const min = minify_sync(
         { [`${fn}.js`]: source },
         {

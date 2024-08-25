@@ -1,5 +1,5 @@
 import { localAwsEnv } from './lite.js'
-import { getApi } from './services/apiGateway.js'
+import { getApi } from './services/api-gateway.js'
 import { getFunctions } from './services/lambda.js'
 
 export class Resolver {

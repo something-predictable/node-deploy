@@ -9,7 +9,7 @@ if (!pathOrEnvArg) {
     throw new Error('Please specify target environment name')
 }
 const path = envArg ? pathOrEnvArg : process.cwd()
-const envName = envArg ? envArg : pathOrEnvArg
+const envName = envArg ?? pathOrEnvArg
 
 try {
     const resolver = new Resolver(envName)
@@ -46,7 +46,6 @@ try {
         console.error(
             "Glue not found. Try to see if there isn't a glue project you can clone next to this project.",
         )
-        // eslint-disable-next-line no-process-exit
         process.exit(1)
     }
     throw e

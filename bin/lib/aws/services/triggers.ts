@@ -191,7 +191,7 @@ function makeStatementData(
 
 function trimTrailingSlash(pathPattern: string) {
     if (pathPattern.endsWith('/')) {
-        return pathPattern.substring(0, pathPattern.length - 1)
+        return pathPattern.slice(0, -1)
     }
     return pathPattern
 }

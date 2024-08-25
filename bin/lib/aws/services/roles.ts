@@ -91,7 +91,7 @@ async function createRole(env: LocalEnv, prefix: string, service: string) {
         ),
         'Error creating role',
     )
-    await setTimeout(10000)
+    await setTimeout(10_000)
     return response.CreateRoleResponse.CreateRoleResult.Role
 }
 

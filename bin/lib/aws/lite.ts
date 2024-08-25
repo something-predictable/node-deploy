@@ -1,6 +1,6 @@
 import { thrownHasStatus } from '@riddance/fetch'
 import { SignatureV4 } from '@smithy/signature-v4'
-import { Hash, Hmac, createHash, createHmac } from 'node:crypto'
+import { createHash, createHmac } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -41,9 +41,9 @@ export async function localAwsEnv(region: string | undefined, profile: string): 
 
     let sectionBeginIx = -1
     const section = `[${profile}]`
-    sectionBeginIx = configLines.findIndex(line => line === section)
+    sectionBeginIx = configLines.indexOf(section)
     if (sectionBeginIx === -1) {
-        sectionBeginIx = configLines.findIndex(line => line === '[default]')
+        sectionBeginIx = configLines.indexOf('[default]')
     }
     if (sectionBeginIx === -1) {
         throw new Error('Section not found.')
@@ -52,7 +52,7 @@ export async function localAwsEnv(region: string | undefined, profile: string): 
         (line, ix) => ix > sectionBeginIx && line.startsWith('['),
     )
     const sectionLines = configLines
-        .slice(sectionBeginIx + 1, sectionEndIx !== -1 ? sectionEndIx : undefined)
+        .slice(sectionBeginIx + 1, sectionEndIx === -1 ? undefined : sectionEndIx)
         .map(line => line.split('='))
         .map(([k, v]) => [k?.trim(), v?.trim()])
     AWS_REGION ??= sectionLines.find(([k]) => k === 'region')?.[1]
@@ -109,7 +109,7 @@ async function awsStringRequest(
 ) {
     const signer = new SignatureV4({
         service,
-        region: service !== 'iam' ? env.AWS_REGION : 'us-east-1',
+        region: service === 'iam' ? 'us-east-1' : env.AWS_REGION,
         sha256: AwsHash,
         credentials: {
             accessKeyId: env.AWS_ACCESS_KEY_ID,
@@ -193,7 +193,7 @@ type SourceData = string | ArrayBuffer | ArrayBufferView
 
 class AwsHash {
     readonly #secret?: SourceData
-    #hash: Hash | Hmac
+    #hash: ReturnType<typeof createHash> | ReturnType<typeof createHmac>
 
     constructor(secret?: SourceData) {
         this.#secret = secret

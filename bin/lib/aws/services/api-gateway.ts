@@ -14,26 +14,7 @@ export async function syncGateway(
     reflection: Reflection,
     corsSites: string[],
 ) {
-    if (!currentGateway.api) {
-        const gateway = await createGateway(env, prefix, service, corsSites)
-        const ids = await Promise.all(
-            reflection.http.map(fn =>
-                createIntegration(
-                    env,
-                    gateway.apiId,
-                    fn.name,
-                    asIntegration(region, account, prefix, service, fn),
-                ),
-            ),
-        )
-        const integrationIdByName = Object.fromEntries(ids)
-        await Promise.all(
-            reflection.http.map(fn =>
-                createRoute(env, gateway.apiId, asRoute(integrationIdByName[fn.name], fn)),
-            ),
-        )
-        return gateway.apiId
-    } else {
+    if (currentGateway.api) {
         await syncGatewayApi(currentGateway.api, env, prefix, service, corsSites)
         await syncStage(env, prefix, service, currentGateway.api.apiId, currentGateway.stage)
         const { ids, surplus: surplusIntegrations } = await syncIntegrations(
@@ -84,6 +65,25 @@ export async function syncGateway(
             ),
         )
         return currentGateway.api.apiId
+    } else {
+        const gateway = await createGateway(env, prefix, service, corsSites)
+        const ids = await Promise.all(
+            reflection.http.map(fn =>
+                createIntegration(
+                    env,
+                    gateway.apiId,
+                    fn.name,
+                    asIntegration(region, account, prefix, service, fn),
+                ),
+            ),
+        )
+        const integrationIdByName = Object.fromEntries(ids)
+        await Promise.all(
+            reflection.http.map(fn =>
+                createRoute(env, gateway.apiId, asRoute(integrationIdByName[fn.name], fn)),
+            ),
+        )
+        return gateway.apiId
     }
 }
 
@@ -150,7 +150,7 @@ export async function getApi(env: LocalEnv, prefix: string, service: string) {
         awsRequest(env, 'GET', 'apigateway', `/v2/apis/`),
         'Error getting APIs.',
     )
-    const [api] = apis.items.filter(a => a.name === `${prefix}-${service}`)
+    const api = apis.items.find(a => a.name === `${prefix}-${service}`)
     if (!api) {
         return { integrations: [], routes: [] }
     }
@@ -196,7 +196,7 @@ function asIntegration(
         integrationMethod: fn.method,
         integrationUri: `arn:aws:lambda:${region}:${account}:function:${prefix}-${service}-${fn.name}`,
         connectionType: 'INTERNET',
-        timeoutInMillis: Math.min(((fn.config.timeout ?? 15) + 5) * 1000, 30000),
+        timeoutInMillis: Math.min(((fn.config.timeout ?? 15) + 5) * 1000, 30_000),
     }
 }
 
@@ -271,7 +271,7 @@ function asRoute(
 
 function trimTrailingSlash(pathPattern: string) {
     if (pathPattern.endsWith('/')) {
-        return pathPattern.substring(0, pathPattern.length - 1)
+        return pathPattern.slice(0, Math.max(0, pathPattern.length - 1))
     }
     return pathPattern
 }
@@ -287,7 +287,7 @@ async function getRoutes(env: LocalEnv, apiId: string) {
 
 async function createRoute(env: LocalEnv, apiId: string, route: AwsRoute) {
     console.log('creating route')
-    return await okResponse(
+    await okResponse(
         awsRequest(env, 'POST', 'apigateway', `/v2/apis/${apiId}/routes`, route),
         'Error creating API route.',
     )
@@ -295,7 +295,7 @@ async function createRoute(env: LocalEnv, apiId: string, route: AwsRoute) {
 
 async function updateRoute(env: LocalEnv, apiId: string, id: string, route: AwsRoute) {
     console.log(`updating API route ${id}`)
-    return await okResponse(
+    await okResponse(
         awsRequest(env, 'PATCH', 'apigateway', `/v2/apis/${apiId}/routes/${id}`, route),
         'Error updating API route.',
     )
@@ -303,7 +303,7 @@ async function updateRoute(env: LocalEnv, apiId: string, id: string, route: AwsR
 
 async function deleteRoute(env: LocalEnv, apiId: string, id: string) {
     console.log(`deleting API route ${id}`)
-    return await okResponse(
+    await okResponse(
         awsRequest(env, 'DELETE', 'apigateway', `/v2/apis/${apiId}/routes/${id}`),
         'Error deleting API route.',
     )

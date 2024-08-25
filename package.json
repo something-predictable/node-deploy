@@ -26,24 +26,24 @@
     "deploy": "bin/deploy.js"
   },
   "dependencies": {
-    "@smithy/signature-v4": "2.3.0",
+    "@riddance/fetch": "0.1.1",
     "@riddance/host": "0.1.0",
-    "@rollup/plugin-commonjs": "25.0.7",
+    "@rollup/plugin-commonjs": "26.0.1",
     "@rollup/plugin-json": "6.1.0",
     "@rollup/plugin-node-resolve": "15.2.3",
     "@rollup/plugin-virtual": "3.0.2",
+    "@rollup/wasm-node": "4.21.0",
+    "@smithy/signature-v4": "4.1.0",
     "jszip": "3.10.1",
-    "@riddance/fetch": "0.1.0",
-    "@rollup/wasm-node": "4.14.3",
-    "terser": "5.30.3"
-  },
-  "devDependencies": {
-    "@riddance/env": "0.5.0"
+    "terser": "5.31.6"
   },
   "scripts": {
     "prepack": "riddance-build",
     "start": "riddance-watch",
     "prepublishOnly": "riddance-prepublish",
     "postpublish": "riddance-sync"
+  },
+  "devDependencies": {
+    "@riddance/env": "0.6.1"
   }
 }
