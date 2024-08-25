@@ -272,11 +272,12 @@ async function pack(
         {
             compress: {
                 module: true,
-                ecma: 2015,
+                ecma: 2020,
                 // eslint-disable-next-line camelcase
                 hoist_funs: true,
                 // eslint-disable-next-line camelcase
                 booleans_as_integers: true,
+                passes: 2,
             },
             mangle: {
                 module: true,
