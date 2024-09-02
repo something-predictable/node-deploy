@@ -26,13 +26,13 @@
     "deploy": "bin/deploy.js"
   },
   "dependencies": {
-    "@riddance/fetch": "0.1.1",
-    "@riddance/host": "0.1.0",
+    "@riddance/fetch": "0.1.2",
+    "@riddance/host": "0.1.1",
     "@rollup/plugin-commonjs": "26.0.1",
     "@rollup/plugin-json": "6.1.0",
     "@rollup/plugin-node-resolve": "15.2.3",
     "@rollup/plugin-virtual": "3.0.2",
-    "@rollup/wasm-node": "4.21.0",
+    "@rollup/wasm-node": "4.21.2",
     "@smithy/signature-v4": "4.1.0",
     "jszip": "3.10.1",
     "terser": "5.31.6"
@@ -44,6 +44,6 @@
     "postpublish": "riddance-sync"
   },
   "devDependencies": {
-    "@riddance/env": "0.6.1"
+    "@riddance/env": "0.6.3"
   }
 }
