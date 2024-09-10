@@ -145,21 +145,35 @@ export type AwsGatewayApi = {
     }
 }
 
-export async function getApi(env: LocalEnv, prefix: string, service: string) {
-    const apis = await jsonResponse<{ items: AwsGatewayApi[] }>(
-        awsRequest(env, 'GET', 'apigateway', `/v2/apis/`),
-        'Error getting APIs.',
-    )
-    const api = apis.items.find(a => a.name === `${prefix}-${service}`)
-    if (!api) {
-        return { integrations: [], routes: [] }
+async function* getApis(env: LocalEnv, prefix: string) {
+    for (let next = ''; ; ) {
+        const page = await jsonResponse<{ items: AwsGatewayApi[]; nextToken?: string }>(
+            awsRequest(env, 'GET', 'apigateway', `/v2/apis/${next}`),
+            'Error getting APIs.',
+        )
+        for (const item of page.items.filter(a => a.name.startsWith(`${prefix}-`))) {
+            yield item
+        }
+        if (!page.nextToken) {
+            break
+        }
+        next = `?nextToken=${encodeURIComponent(page.nextToken)}`
     }
-    const [integrations, routes, stage] = await Promise.all([
-        getIntegrations(env, api.apiId),
-        getRoutes(env, api.apiId),
-        getStage(env, api.apiId),
-    ])
-    return { api, integrations: integrations.items, routes: routes.items, stage }
+}
+
+export async function getApi(env: LocalEnv, prefix: string, service: string) {
+    const name = `${prefix}-${service}`
+    for await (const api of getApis(env, prefix)) {
+        if (api.name === name) {
+            const [integrations, routes, stage] = await Promise.all([
+                getIntegrations(env, api.apiId),
+                getRoutes(env, api.apiId),
+                getStage(env, api.apiId),
+            ])
+            return { api, integrations: integrations.items, routes: routes.items, stage }
+        }
+    }
+    return { integrations: [], routes: [] }
 }
 
 export type AwsIntegration = {
