@@ -1,12 +1,14 @@
-import { localAwsEnv } from './lite.js'
-import { getApi } from './services/api-gateway.js'
+import { localAwsEnv, type LocalEnv } from './lite.js'
+import { getApis } from './services/api-gateway.js'
 import { getFunctions } from './services/lambda.js'
 
 export class Resolver {
     readonly #env
+    readonly #endpointCache: { [prefix: string]: Promise<{ [apiName: string]: string }> }
 
     constructor(prefix: string) {
         this.#env = localAwsEnv(undefined, prefix)
+        this.#endpointCache = {}
     }
 
     async getEnvironment(prefix: string, service: string): Promise<{ [key: string]: string }> {
@@ -14,8 +16,17 @@ export class Resolver {
         return Object.fromEntries(functions.flatMap(fn => Object.entries(fn.env)))
     }
 
-    async getBaseUrl(prefix: string, service: string): Promise<string | undefined> {
-        const api = await getApi(await this.#env, prefix, service)
-        return (api.api?.apiEndpoint ?? '') + '/'
+    async getBaseUrl(prefix: string, service: string) {
+        const cached = await (this.#endpointCache[prefix] ??= getServiceApis(this.#env, prefix))
+        const name = `${prefix}-${service}`
+        return cached[name]
     }
+}
+
+async function getServiceApis(env: Promise<LocalEnv>, prefix: string) {
+    const serviceApis: { [name: string]: string } = {}
+    for await (const api of getApis(await env, prefix)) {
+        serviceApis[api.name] = api.apiEndpoint
+    }
+    return serviceApis
 }

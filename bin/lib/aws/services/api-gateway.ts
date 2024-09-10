@@ -145,7 +145,7 @@ export type AwsGatewayApi = {
     }
 }
 
-async function* getApis(env: LocalEnv, prefix: string) {
+export async function* getApis(env: LocalEnv, prefix: string) {
     for (let next = ''; ; ) {
         const page = await jsonResponse<{ items: AwsGatewayApi[]; nextToken?: string }>(
             awsRequest(env, 'GET', 'apigateway', `/v2/apis/${next}`),
