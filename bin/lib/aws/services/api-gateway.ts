@@ -2,7 +2,7 @@ import { jsonResponse, okResponse, throwOnNotOK } from '@riddance/fetch'
 import { Reflection } from '@riddance/host/reflect'
 import { isDeepStrictEqual } from 'node:util'
 import { compare } from '../diff.js'
-import { LocalEnv, awsRequest } from '../lite.js'
+import { LocalEnv, awsRequest, retryConflict } from '../lite.js'
 
 export async function syncGateway(
     env: LocalEnv,
@@ -221,9 +221,11 @@ async function createIntegration(
     integration: AwsIntegration,
 ) {
     console.log('creating API integration')
-    const created = await jsonResponse<{ integrationId: string }>(
-        awsRequest(env, 'POST', 'apigateway', `/v2/apis/${apiId}/integrations`, integration),
-        'Error creating API integration.',
+    const created = await retryConflict(() =>
+        jsonResponse<{ integrationId: string }>(
+            awsRequest(env, 'POST', 'apigateway', `/v2/apis/${apiId}/integrations`, integration),
+            'Error creating API integration.',
+        ),
     )
     return [name, created.integrationId] as [string, string]
 }
@@ -301,9 +303,11 @@ async function getRoutes(env: LocalEnv, apiId: string) {
 
 async function createRoute(env: LocalEnv, apiId: string, route: AwsRoute) {
     console.log('creating route')
-    await okResponse(
-        awsRequest(env, 'POST', 'apigateway', `/v2/apis/${apiId}/routes`, route),
-        'Error creating API route.',
+    await retryConflict(() =>
+        okResponse(
+            awsRequest(env, 'POST', 'apigateway', `/v2/apis/${apiId}/routes`, route),
+            'Error creating API route.',
+        ),
     )
 }
 
