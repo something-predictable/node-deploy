@@ -94,17 +94,10 @@ async function syncIntegrations(
     prefix: string,
     service: string,
     apiId: string,
-    currentIntegrations: (AwsIntegration & { integrationId: string })[],
+    currentIntegrations: (AwsIntegration & { name: string; integrationId: string })[],
     reflection: Reflection,
 ) {
-    const { missing, surplus, existing } = compare(
-        reflection.http,
-        currentIntegrations.map(i => ({
-            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-            name: i.integrationUri.split(':').at(-1)!.split('-').at(-1)!,
-            ...i,
-        })),
-    )
+    const { missing, surplus, existing } = compare(reflection.http, currentIntegrations)
     const ids = await Promise.all([
         ...missing.map(fn =>
             createIntegration(
@@ -166,11 +159,11 @@ export async function getApi(env: LocalEnv, prefix: string, service: string) {
     for await (const api of getApis(env, prefix)) {
         if (api.name === name) {
             const [integrations, routes, stage] = await Promise.all([
-                getIntegrations(env, api.apiId),
+                getIntegrations(env, api.apiId, name.length + 1),
                 getRoutes(env, api.apiId),
                 getStage(env, api.apiId),
             ])
-            return { api, integrations: integrations.items, routes: routes.items, stage }
+            return { api, integrations, routes: routes.items, stage }
         }
     }
     return { integrations: [], routes: [] }
@@ -185,13 +178,18 @@ export type AwsIntegration = {
     timeoutInMillis: number | undefined
 }
 
-async function getIntegrations(env: LocalEnv, apiId: string) {
-    return await jsonResponse<{
+async function getIntegrations(env: LocalEnv, apiId: string, prefixLength: number) {
+    const { items } = await jsonResponse<{
         items: (AwsIntegration & { integrationId: string })[]
     }>(
         awsRequest(env, 'GET', 'apigateway', `/v2/apis/${apiId}/integrations`),
         'Error getting API integrations.',
     )
+    return items.map(i => ({
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        name: i.integrationUri.split(':').at(-1)!.slice(prefixLength),
+        ...i,
+    }))
 }
 
 function asIntegration(
