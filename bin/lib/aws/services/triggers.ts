@@ -120,7 +120,9 @@ async function addTrigger(
     id: string,
     statement: ReturnType<typeof makeStatementData>,
 ) {
-    console.log('adding trigger ' + id)
+    const arn = statement.Condition.ArnLike['AWS:SourceArn']
+    console.log(`adding trigger ${id} to lambda ${name}`)
+    console.log(`  from ${arn}`)
     await okResponse(
         awsRequest(
             env,
@@ -131,7 +133,7 @@ async function addTrigger(
                 StatementId: id,
                 Action: statement.Action,
                 Principal: statement.Principal.Service,
-                SourceArn: statement.Condition.ArnLike['AWS:SourceArn'],
+                SourceArn: arn,
             },
         ),
         'Error adding triggers.',
@@ -145,7 +147,7 @@ async function deleteTrigger(
     name: string,
     id: string,
 ) {
-    console.log('deleting trigger ' + id)
+    console.log(`deleting trigger ${id} from ${name}`)
     await okResponse(
         awsRequest(
             env,

@@ -41,7 +41,7 @@ export async function syncGateway(
             })),
         )
         await Promise.all([
-            ...surplus.map(i => deleteRoute(env, currentGateway.api.apiId, i.routeId)),
+            ...surplus.map(i => deleteRoute(env, currentGateway.api.apiId, i)),
             ...missing.map(fn =>
                 createRoute(
                     env,
@@ -227,6 +227,7 @@ async function createIntegration(
             'Error creating API integration.',
         ),
     )
+    console.log(`  from ${apiId} to ${integration.integrationUri} as ${created.integrationId}`)
     return [name, created.integrationId] as [string, string]
 }
 
@@ -236,7 +237,8 @@ async function updateIntegration(
     id: string,
     integration: AwsIntegration,
 ) {
-    console.log('updating API integration')
+    console.log('updating API integration ' + id)
+    console.log(`  from ${apiId} to ${integration.integrationUri}`)
     await okResponse(
         awsRequest(env, 'PATCH', 'apigateway', `/v2/apis/${apiId}/integrations/${id}`, integration),
         'Error updating API integration',
@@ -253,7 +255,7 @@ async function deleteIntegration(
     if (!region || !account) {
         throw new Error('Weird')
     }
-    console.log('deleting API integration')
+    console.log('deleting API integration ' + id)
     await okResponse(
         awsRequest(env, 'DELETE', 'apigateway', `/v2/apis/${apiId}/integrations/${id}`),
         'Error deleting API integration.',
@@ -302,7 +304,7 @@ async function getRoutes(env: LocalEnv, apiId: string) {
 }
 
 async function createRoute(env: LocalEnv, apiId: string, route: AwsRoute) {
-    console.log('creating route')
+    console.log(`creating route ${route.routeKey} to ${route.target}`)
     await retryConflict(() =>
         okResponse(
             awsRequest(env, 'POST', 'apigateway', `/v2/apis/${apiId}/routes`, route),
@@ -312,17 +314,17 @@ async function createRoute(env: LocalEnv, apiId: string, route: AwsRoute) {
 }
 
 async function updateRoute(env: LocalEnv, apiId: string, id: string, route: AwsRoute) {
-    console.log(`updating API route ${id}`)
+    console.log(`updating API route ${id} to ${route.target}`)
     await okResponse(
         awsRequest(env, 'PATCH', 'apigateway', `/v2/apis/${apiId}/routes/${id}`, route),
         'Error updating API route.',
     )
 }
 
-async function deleteRoute(env: LocalEnv, apiId: string, id: string) {
-    console.log(`deleting API route ${id}`)
+async function deleteRoute(env: LocalEnv, apiId: string, route: AwsRoute & { routeId: string }) {
+    console.log(`deleting API route ${route.routeId} from ${route.target}`)
     await okResponse(
-        awsRequest(env, 'DELETE', 'apigateway', `/v2/apis/${apiId}/routes/${id}`),
+        awsRequest(env, 'DELETE', 'apigateway', `/v2/apis/${apiId}/routes/${route.routeId}`),
         'Error deleting API route.',
     )
 }

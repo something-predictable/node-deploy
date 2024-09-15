@@ -69,6 +69,10 @@ async function zip(code: string) {
         .generateAsync({ type: 'nodebuffer' })
     return {
         zipped: buffer.toString('base64'),
+        size:
+            buffer.length < 1024
+                ? `${buffer.length} bytes`
+                : `${Math.ceil(buffer.length / 102.4) / 10} KiB`,
         sha256: createHash('sha256').update(buffer).digest('base64'),
     }
 }
@@ -83,6 +87,7 @@ export type AwsFunctionLite = {
     env: { [key: string]: string }
     cpus: Architectures
     hash: string
+    size: string
 }
 
 type AwsFunction = {
@@ -152,6 +157,10 @@ export async function getFunctions(
             env: fn.Environment?.Variables ?? {},
             cpus: fn.Architectures,
             hash: fn.CodeSha256,
+            size:
+                fn.CodeSize < 1024
+                    ? `${fn.CodeSize} bytes`
+                    : `${Math.ceil(fn.CodeSize / 102.4) / 10} KiB`,
         }))
 }
 
@@ -169,12 +178,12 @@ async function createLambda(
     role: string,
     config: Config,
     environment: { [key: string]: string },
-    code?: { zipped: string; sha256: string },
+    code?: { zipped: string; sha256: string; size: string },
 ) {
     if (!code) {
         throw new Error('No code')
     }
-    console.log('creating lambda ' + name)
+    console.log(`creating lambda ${name} (${code.size})`)
     const response = await jsonResponse<{ FunctionArn: string }>(
         retry(
             () =>
@@ -206,7 +215,7 @@ async function updateLambda(
     config: Config | undefined,
     awsFn: AwsFunctionLite,
     environment: { [key: string]: string },
-    code?: { zipped: string; sha256: string },
+    code?: { zipped: string; sha256: string; size: string },
 ) {
     if (!code) {
         throw new Error('No code')
@@ -216,7 +225,7 @@ async function updateLambda(
     }
     const cpus = lambdaArchitecture(config)
     if (!isDeepStrictEqual({ cpus, hash: code.sha256 }, { cpus: awsFn.cpus, hash: awsFn.hash })) {
-        console.log('updating code for lambda ' + name)
+        console.log(`updating code for lambda ${name} (${awsFn.size} -> ${code.size})`)
         await okResponse(
             awsRequest(
                 env,
