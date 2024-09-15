@@ -76,7 +76,7 @@ export async function getTriggers(
     service: string,
     functions: { id: string; name: string }[],
 ): Promise<AwsTrigger[]> {
-    const policies = await Promise.all(
+    return await Promise.all(
         functions.map(async fn => {
             try {
                 return {
@@ -109,7 +109,6 @@ export async function getTriggers(
             }
         }),
     )
-    return policies
 }
 
 async function addTrigger(

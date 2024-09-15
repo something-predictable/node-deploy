@@ -192,7 +192,7 @@ async function resolveEnv(
                 ) {
                     return substring
                 }
-                const s = v.value(
+                return v.value(
                     prefix,
                     service,
                     [substring, ...matches],
@@ -200,7 +200,6 @@ async function resolveEnv(
                     environments,
                     baseUrls,
                 )
-                return s
             })
         }
     }
@@ -210,7 +209,7 @@ async function resolveEnv(
         env[ref.key] = env[ref.key]!.replaceAll(
             ref.v.pattern,
             (substring, ...matches: string[]) => {
-                const s = ref.v.value(
+                return ref.v.value(
                     prefix,
                     service,
                     [substring, ...matches],
@@ -218,7 +217,6 @@ async function resolveEnv(
                     { [service]: env },
                     baseUrls,
                 )
-                return s
             },
         )
     }
