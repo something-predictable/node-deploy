@@ -120,7 +120,7 @@ async function addTrigger(
     id: string,
     statement: ReturnType<typeof makeStatementData>,
 ) {
-    console.log('Adding trigger ' + id)
+    console.log('adding trigger ' + id)
     await okResponse(
         awsRequest(
             env,
@@ -145,7 +145,7 @@ async function deleteTrigger(
     name: string,
     id: string,
 ) {
-    console.log('Deleting trigger ' + id)
+    console.log('deleting trigger ' + id)
     await okResponse(
         awsRequest(
             env,
