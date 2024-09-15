@@ -40,8 +40,8 @@ export async function syncGateway(
                 ...r,
             })),
         )
+        await Promise.all(surplus.map(i => deleteRoute(env, currentGateway.api.apiId, i)))
         await Promise.all([
-            ...surplus.map(i => deleteRoute(env, currentGateway.api.apiId, i)),
             ...missing.map(fn =>
                 createRoute(
                     env,

@@ -45,6 +45,22 @@ export async function sync(
         throw new Error('Weird')
     }
 
+    await assignPolicy(env, prefix, service, region, account, provider.aws?.policyStatements ?? [])
+
+    const existingGatewayId = currentState.apis.api?.apiId
+    if (existingGatewayId) {
+        await syncTriggers(
+            env,
+            prefix,
+            service,
+            fns,
+            reflection,
+            region,
+            account,
+            existingGatewayId,
+        )
+    }
+
     const gatewayId = await syncGateway(
         env,
         region,
@@ -56,9 +72,9 @@ export async function sync(
         corsSites,
     )
 
-    await syncTriggers(env, prefix, service, fns, reflection, region, account, gatewayId)
-
-    await assignPolicy(env, prefix, service, region, account, provider.aws?.policyStatements ?? [])
+    if (!existingGatewayId) {
+        await syncTriggers(env, prefix, service, fns, reflection, region, account, gatewayId)
+    }
 
     return `https://${gatewayId}.execute-api.eu-central-1.amazonaws.com/`
 }
