@@ -1,6 +1,6 @@
 {
   "name": "@riddance/deploy",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "type": "module",
   "keywords": [
     "riddance",
@@ -22,8 +22,7 @@
     "bin/lib/aws/services/*.js"
   ],
   "bin": {
-    "cli": "bin/cli.js",
-    "deploy": "bin/deploy.js"
+    "deploy": "bin/index.js"
   },
   "dependencies": {
     "@riddance/fetch": "0.1.2",

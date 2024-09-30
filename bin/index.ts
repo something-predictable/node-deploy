@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { reflect } from '@riddance/host/reflect'
 import { Resolver } from './lib/aws/resolve.js'
 import { getCurrentState, sync } from './lib/aws/sync.js'
