@@ -2,7 +2,7 @@ import commonjs from '@rollup/plugin-commonjs'
 import json from '@rollup/plugin-json'
 import { nodeResolve } from '@rollup/plugin-node-resolve'
 import virtual from '@rollup/plugin-virtual'
-import { rollup, RollupCache, SourceMap } from '@rollup/wasm-node'
+import { rollup, RollupCache, SourceMap, type Plugin } from '@rollup/wasm-node'
 import { createHash } from 'node:crypto'
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -164,7 +164,7 @@ async function find(dir: string): Promise<string[]> {
                 !f.endsWith('.min.js') &&
                 f !== 'tsconfig.json' &&
                 f !== 'cspell.json' &&
-                f !== 'eslint.config.js' &&
+                f !== 'eslint.config.mjs' &&
                 f !== 'dictionary.txt' &&
                 f !== 'node_modules' &&
                 f !== 'test' &&
@@ -203,18 +203,15 @@ async function rollupAndMinify(host: Host, _path: string, stagePath: string, fun
                 moduleSideEffects: true,
             },
             plugins: [
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-explicit-any
-                (virtual as any)({
+                (virtual as unknown as (options: unknown) => Plugin)({
                     entry: aws.entry(fn),
                 }),
                 nodeResolve({
                     exportConditions: ['node'],
                     rootDir: stagePath,
                 }),
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-explicit-any
-                (commonjs as any)(),
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-explicit-any
-                (json as any)(),
+                (commonjs as unknown as () => Plugin)(),
+                (json as unknown as () => Plugin)(),
             ],
             onwarn: warning => {
                 if (warning.code === 'THIS_IS_UNDEFINED') {

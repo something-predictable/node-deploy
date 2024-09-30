@@ -27,15 +27,15 @@
   },
   "dependencies": {
     "@riddance/fetch": "0.1.2",
-    "@riddance/host": "0.1.1",
-    "@rollup/plugin-commonjs": "26.0.1",
+    "@riddance/host": "0.1.2",
+    "@rollup/plugin-commonjs": "28.0.0",
     "@rollup/plugin-json": "6.1.0",
-    "@rollup/plugin-node-resolve": "15.2.3",
+    "@rollup/plugin-node-resolve": "15.3.0",
     "@rollup/plugin-virtual": "3.0.2",
-    "@rollup/wasm-node": "4.21.2",
-    "@smithy/signature-v4": "4.1.0",
+    "@rollup/wasm-node": "4.22.5",
+    "@smithy/signature-v4": "4.2.0",
     "jszip": "3.10.1",
-    "terser": "5.31.6"
+    "terser": "5.34.1"
   },
   "scripts": {
     "prepack": "riddance-build",
@@ -44,6 +44,6 @@
     "postpublish": "riddance-sync"
   },
   "devDependencies": {
-    "@riddance/env": "0.6.3"
+    "@riddance/env": "0.6.4"
   }
 }
