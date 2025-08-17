@@ -1,6 +1,7 @@
 import type { Reflection } from '@riddance/host/reflect'
 import { localAwsEnv } from './lite.js'
 import { getApi, syncGateway } from './services/api-gateway.js'
+import { syncEventBridge } from './services/event-bridge.js'
 import { getFunctions, syncLambda } from './services/lambda.js'
 import { assignPolicy, getRole, syncRole } from './services/roles.js'
 import { syncTriggers } from './services/triggers.js'
@@ -31,6 +32,7 @@ export async function sync(
 ) {
     const env = await localAwsEnv(undefined, prefix)
     const role = await syncRole(env, prefix, service, currentState.role)
+
     const fns = await syncLambda(
         env,
         prefix,
@@ -61,20 +63,25 @@ export async function sync(
         )
     }
 
-    const gatewayId = await syncGateway(
-        env,
-        region,
-        account,
-        prefix,
-        service,
-        currentState.apis,
-        reflection,
-        corsSites,
-    )
+    const gatewayId =
+        reflection.http.length === 0
+            ? undefined
+            : await syncGateway(
+                  env,
+                  region,
+                  account,
+                  prefix,
+                  service,
+                  currentState.apis,
+                  reflection,
+                  corsSites,
+              )
 
     if (!existingGatewayId) {
         await syncTriggers(env, prefix, service, fns, reflection, region, account, gatewayId)
     }
 
-    return `https://${gatewayId}.execute-api.eu-central-1.amazonaws.com/`
+    await syncEventBridge(env, region, account, prefix, service, reflection)
+
+    return gatewayId && `https://${gatewayId}.execute-api.eu-central-1.amazonaws.com/`
 }

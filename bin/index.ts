@@ -24,7 +24,10 @@ try {
             reflection.revision,
             implementations,
             service,
-            Object.fromEntries(reflection.http.map(fn => [fn.name, 'http'] as const)),
+            Object.fromEntries([
+                ...reflection.http.map(fn => [fn.name, 'http'] as const),
+                ...reflection.timers.map(fn => [fn.name, 'timer'] as const),
+            ]),
         ),
     ])
 
@@ -40,7 +43,10 @@ try {
     )
 
     console.log('done.')
-    console.log(`hosting on ${host}`)
+
+    if (reflection.http.length !== 0) {
+        console.log(`hosting on ${host}`)
+    }
 } catch (e) {
     const fileError = e as { code?: string; path?: string }
     if (fileError.code === 'ENOENT' && fileError.path?.endsWith('glue.json')) {

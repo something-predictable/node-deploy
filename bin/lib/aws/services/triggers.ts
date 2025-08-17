@@ -15,8 +15,8 @@ export async function syncTriggers(
     apiGatewayId: string | undefined,
 ) {
     const currentTriggers = await getTriggers(env, prefix, service, functions)
-    await Promise.all(
-        reflection.http.map(async fn => {
+    await Promise.all([
+        ...reflection.http.map(async fn => {
             const trigger = currentTriggers.find(t => t.name === fn.name)
             if (!apiGatewayId) {
                 throw new Error('Need API Gateway for http triggers.')
@@ -41,7 +41,29 @@ export async function syncTriggers(
             )
             await syncTrigger(trigger, statement, env, prefix, service, fn.name)
         }),
-    )
+        ...reflection.timers.map(async fn => {
+            const trigger = currentTriggers.find(t => t.name === fn.name)
+            if (!trigger) {
+                const statement = makeEventBridgeStatementData(
+                    region,
+                    account,
+                    functions.find(f => f.name === fn.name)?.id ?? '',
+                    prefix,
+                    service,
+                )
+                await addTrigger(env, prefix, service, fn.name, randomUUID(), statement)
+                return
+            }
+            const statement = makeEventBridgeStatementData(
+                region,
+                account,
+                trigger.id,
+                prefix,
+                service,
+            )
+            await syncTrigger(trigger, statement, env, prefix, service, fn.name)
+        }),
+    ])
 }
 
 export type AwsTrigger = {
@@ -198,6 +220,22 @@ function makeApiGatewayStatementData(
         `arn:aws:execute-api:${region}:${account}:${apiGatewayId}/*/*/${trimTrailingSlash(
             fn.pathPattern.replaceAll('*', () => `{p${++p}}`),
         )}`,
+    )
+}
+
+function makeEventBridgeStatementData(
+    region: string | undefined,
+    account: string | undefined,
+    functionId: string,
+    prefix: string,
+    service: string,
+) {
+    return makeStatementData(
+        region,
+        account,
+        functionId,
+        'events.amazonaws.com',
+        `arn:aws:events:${region}:${account}:rule/${prefix}-${service}-*`,
     )
 }
 

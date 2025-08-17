@@ -71,6 +71,8 @@ export function awsRequest(
     service: string,
     path: string,
     body?: unknown,
+    target?: string,
+    contentType?: string,
 ) {
     return awsStringRequest(
         env,
@@ -78,7 +80,8 @@ export function awsRequest(
         service,
         path,
         body ? JSON.stringify(body) : '',
-        'application/json',
+        contentType ?? 'application/json',
+        target,
     )
 }
 
@@ -106,6 +109,7 @@ async function awsStringRequest(
     path: string,
     body: string,
     contentType: string,
+    target?: string,
 ) {
     const signer = new SignatureV4({
         service,
@@ -132,6 +136,7 @@ async function awsStringRequest(
             host: uri.hostname,
             'content-type': contentType,
             accept: 'application/json',
+            ...(target && { 'X-Amz-Target': target }),
         },
         body,
     })

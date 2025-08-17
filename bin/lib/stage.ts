@@ -38,7 +38,7 @@ export async function stage(
     revision: string | undefined,
     implementations: { [fromPackage: string]: Implementation },
     service: string,
-    types: { [name: string]: 'http' },
+    types: { [name: string]: 'http' | 'timer' },
 ) {
     const stagePath = join(tmpdir(), 'riddance', 'stage', service)
     console.log(`stage dir: ${stagePath}`)
@@ -211,7 +211,7 @@ async function rollupAndMinify(
     service: string,
     revision: string | undefined,
     functions: string[],
-    types: { [name: string]: 'http' },
+    types: { [name: string]: 'http' | 'timer' },
 ) {
     const minified = []
     let rollupCache: RollupCache | undefined
