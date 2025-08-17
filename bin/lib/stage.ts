@@ -304,14 +304,14 @@ async function pack(
         writeFile(join(stagePath, fn + '.min.js'), code),
         writeFile(
             join(stagePath, fn + '.min.js.map.gz'),
-            await gzip(min.map as unknown as ArrayBufferLike),
+            await gzip(min.map as unknown as ArrayBuffer),
         ),
     ])
 
     return { fn, code }
 }
 
-function gzip(data: ArrayBufferLike) {
+function gzip(data: ArrayBuffer) {
     return new Promise<Buffer>((resolve, reject) => {
         zlib.gzip(data, { level: 9 }, (err, buf) => {
             if (err) {
