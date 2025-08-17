@@ -224,6 +224,13 @@ async function rollupAndMinify(host: Host, _path: string, stagePath: string, fun
                     warning.ids.length !== 0
                 ) {
                     console.warn(warning.ids.map(p => relative(stagePath, p)).join(' -> '))
+                } else {
+                    if (warning.code) {
+                        console.log(warning.message)
+                    }
+                    if (warning.frame) {
+                        console.log(warning.frame)
+                    }
                 }
             },
         })
