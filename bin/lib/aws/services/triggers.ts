@@ -12,14 +12,17 @@ export async function syncTriggers(
     reflection: Reflection,
     region: string | undefined,
     account: string | undefined,
-    apiGatewayId: string,
+    apiGatewayId: string | undefined,
 ) {
     const currentTriggers = await getTriggers(env, prefix, service, functions)
     await Promise.all(
         reflection.http.map(async fn => {
             const trigger = currentTriggers.find(t => t.name === fn.name)
+            if (!apiGatewayId) {
+                throw new Error('Need API Gateway for http triggers.')
+            }
             if (!trigger) {
-                const statement = makeStatementData(
+                const statement = makeApiGatewayStatementData(
                     region,
                     account,
                     apiGatewayId,
@@ -29,24 +32,14 @@ export async function syncTriggers(
                 await addTrigger(env, prefix, service, fn.name, randomUUID(), statement)
                 return
             }
-            const statement = makeStatementData(region, account, apiGatewayId, trigger.id, fn)
-            let exists = false
-            if (trigger.statements) {
-                for (const { Sid, ...data } of trigger.statements) {
-                    if (isDeepStrictEqual(data, statement)) {
-                        if (exists) {
-                            await deleteTrigger(env, prefix, service, fn.name, Sid)
-                        } else {
-                            exists = true
-                        }
-                    } else {
-                        await deleteTrigger(env, prefix, service, fn.name, Sid)
-                    }
-                }
-            }
-            if (!exists) {
-                await addTrigger(env, prefix, service, fn.name, randomUUID(), statement)
-            }
+            const statement = makeApiGatewayStatementData(
+                region,
+                account,
+                apiGatewayId,
+                trigger.id,
+                fn,
+            )
+            await syncTrigger(trigger, statement, env, prefix, service, fn.name)
         }),
     )
 }
@@ -68,6 +61,33 @@ type AwsStatement = {
     Action: string
     Resource: string
     Condition: unknown
+}
+
+async function syncTrigger(
+    trigger: AwsTrigger,
+    statement: StatementData,
+    env: LocalEnv,
+    prefix: string,
+    service: string,
+    name: string,
+) {
+    let exists = false
+    if (trigger.statements) {
+        for (const { Sid, ...data } of trigger.statements) {
+            if (isDeepStrictEqual(data, statement)) {
+                if (exists) {
+                    await deleteTrigger(env, prefix, service, name, Sid)
+                } else {
+                    exists = true
+                }
+            } else {
+                await deleteTrigger(env, prefix, service, name, Sid)
+            }
+        }
+    }
+    if (!exists) {
+        await addTrigger(env, prefix, service, name, randomUUID(), statement)
+    }
 }
 
 export async function getTriggers(
@@ -117,7 +137,7 @@ async function addTrigger(
     service: string,
     name: string,
     id: string,
-    statement: ReturnType<typeof makeStatementData>,
+    statement: StatementData,
 ) {
     const arn = statement.Condition.ArnLike['AWS:SourceArn']
     console.log(`adding trigger ${id} to lambda ${name}`)
@@ -158,7 +178,7 @@ async function deleteTrigger(
     )
 }
 
-function makeStatementData(
+function makeApiGatewayStatementData(
     region: string | undefined,
     account: string | undefined,
     apiGatewayId: string,
@@ -169,22 +189,40 @@ function makeStatementData(
         pathPattern: string
     },
 ) {
+    let p = 0
+    return makeStatementData(
+        region,
+        account,
+        functionId,
+        'apigateway.amazonaws.com',
+        `arn:aws:execute-api:${region}:${account}:${apiGatewayId}/*/*/${trimTrailingSlash(
+            fn.pathPattern.replaceAll('*', () => `{p${++p}}`),
+        )}`,
+    )
+}
+
+type StatementData = ReturnType<typeof makeStatementData>
+
+function makeStatementData(
+    region: string | undefined,
+    account: string | undefined,
+    functionId: string,
+    service: string,
+    source: string,
+) {
     if (!region || !account) {
         throw new Error('Weird')
     }
-    let p = 0
     return {
         Action: 'lambda:InvokeFunction',
         Effect: 'Allow',
         Principal: {
-            Service: 'apigateway.amazonaws.com',
+            Service: service,
         },
         Resource: functionId,
         Condition: {
             ArnLike: {
-                'AWS:SourceArn': `arn:aws:execute-api:${region}:${account}:${apiGatewayId}/*/*/${trimTrailingSlash(
-                    fn.pathPattern.replaceAll('*', () => `{p${++p}}`),
-                )}`,
+                'AWS:SourceArn': source,
             },
         },
     }

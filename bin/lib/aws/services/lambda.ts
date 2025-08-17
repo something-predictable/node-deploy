@@ -17,14 +17,12 @@ export async function syncLambda(
 ) {
     const zipped = Object.fromEntries(
         await Promise.all(
-            Object.entries(code).map(
-                async ([name, c]) =>
-                    [name, await zip(c)] as [string, Awaited<ReturnType<typeof zip>>],
-            ),
+            Object.entries(code).map(async ([name, c]) => [name, await zip(c)] as const),
         ),
     )
 
-    const { missing, surplus, existing } = compare(reflection.http, currentFunctions)
+    const functions = reflection.http
+    const { missing, surplus, existing } = compare(functions, currentFunctions)
     const created = await Promise.all(
         missing.map(fn =>
             createLambda(
@@ -48,7 +46,7 @@ export async function syncLambda(
                 awsFn.name,
                 reflection.name,
                 role,
-                reflection.http.find(fn => fn.name === awsFn.name)?.config,
+                functions.find(fn => fn.name === awsFn.name)?.config,
                 awsFn,
                 environment,
                 zipped[awsFn.name],

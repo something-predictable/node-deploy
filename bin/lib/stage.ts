@@ -19,9 +19,14 @@ type Implementation = {
 }
 
 const aws = {
-    entry: (fn: string) => `
-import './${fn}.js'
-import { awsHandler } from '@riddance/aws-host/http'
+    entry: (type: string, service: string, fn: string, revision: string | undefined) => `
+import { awsHandler } from '@riddance/aws-host/${type}'
+import * as host from '@riddance/aws-host/${type}'
+if('setMeta' in host) {
+    host.setMeta('${service.replaceAll("'", "\\'")}','${fn}','${revision}')
+}
+
+import('./${fn}.js')
 
 export const handler = awsHandler
 `,
@@ -30,8 +35,10 @@ export const handler = awsHandler
 
 export async function stage(
     path: string,
+    revision: string | undefined,
     implementations: { [fromPackage: string]: Implementation },
     service: string,
+    types: { [name: string]: 'http' },
 ) {
     const stagePath = join(tmpdir(), 'riddance', 'stage', service)
     console.log(`stage dir: ${stagePath}`)
@@ -75,7 +82,7 @@ export async function stage(
     const nonFunctionFilesUnchanged = isDeepStrictEqual(previous, hashes)
     if (nonFunctionFilesUnchanged) {
         const code = [
-            ...(await rollupAndMinify(aws, path, stagePath, changed)),
+            ...(await rollupAndMinify(aws, path, stagePath, service, revision, changed, types)),
             ...(await Promise.all(
                 unchanged.map(async fn => ({
                     fn,
@@ -86,7 +93,15 @@ export async function stage(
         await writeFile(join(stagePath, '.hashes.json'), hashesJson)
         return code
     } else {
-        const code = await rollupAndMinify(aws, path, stagePath, functions)
+        const code = await rollupAndMinify(
+            aws,
+            path,
+            stagePath,
+            service,
+            revision,
+            functions,
+            types,
+        )
         await writeFile(join(stagePath, '.hashes.json'), hashesJson)
         return code
     }
@@ -185,11 +200,19 @@ async function find(dir: string): Promise<string[]> {
 }
 
 type Host = {
-    entry: (fn: string) => string
+    entry: (type: string, service: string, name: string, revision: string | undefined) => string
     patch?: (bundled: string) => string
 }
 
-async function rollupAndMinify(host: Host, _path: string, stagePath: string, functions: string[]) {
+async function rollupAndMinify(
+    host: Host,
+    _path: string,
+    stagePath: string,
+    service: string,
+    revision: string | undefined,
+    functions: string[],
+    types: { [name: string]: 'http' },
+) {
     const minified = []
     let rollupCache: RollupCache | undefined
     for (const fn of functions) {
@@ -204,7 +227,8 @@ async function rollupAndMinify(host: Host, _path: string, stagePath: string, fun
             },
             plugins: [
                 (virtual as unknown as (options: unknown) => Plugin)({
-                    entry: aws.entry(fn),
+                    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                    entry: aws.entry(types[fn]!, service, fn, revision),
                 }),
                 nodeResolve({
                     exportConditions: ['node'],
@@ -217,6 +241,13 @@ async function rollupAndMinify(host: Host, _path: string, stagePath: string, fun
                 if (warning.code === 'THIS_IS_UNDEFINED') {
                     return
                 }
+                if (
+                    warning.code === 'MISSING_EXPORT' &&
+                    warning.id === '\u0000virtual:entry' &&
+                    warning.binding === 'setMeta'
+                ) {
+                    return
+                }
                 console.warn(`${warning.code ?? warning.message} [${fn}]`)
                 if (
                     warning.code === 'CIRCULAR_DEPENDENCY' &&
@@ -226,10 +257,10 @@ async function rollupAndMinify(host: Host, _path: string, stagePath: string, fun
                     console.warn(warning.ids.map(p => relative(stagePath, p)).join(' -> '))
                 } else {
                     if (warning.code) {
-                        console.log(warning.message)
+                        console.warn(warning.message)
                     }
                     if (warning.frame) {
-                        console.log(warning.frame)
+                        console.warn(warning.frame)
                     }
                 }
             },
@@ -248,11 +279,11 @@ async function rollupAndMinify(host: Host, _path: string, stagePath: string, fun
             },
         })
         if (output.length !== 2) {
-            console.log(output[2])
+            console.error(output[2])
             throw new Error('Weird')
         }
         if (output[1]?.type !== 'asset' || output[1].fileName !== '_virtual_entry.js.map') {
-            console.log(output[2])
+            console.error(output[2])
             throw new Error('Weird')
         }
         const [{ code, map }] = output

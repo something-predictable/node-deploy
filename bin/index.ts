@@ -15,17 +15,17 @@ const envName = envArg ?? pathOrEnvArg
 
 try {
     const resolver = new Resolver(envName)
-    const { service, implementations, corsSites, env, ...provider } = await getGlue(
-        path,
-        envName,
-        resolver,
-        glueFile,
-    )
-
-    const [currentState, reflection, code] = await Promise.all([
+    const [{ service, implementations, corsSites, env, ...provider }, reflection] =
+        await Promise.all([getGlue(path, envName, resolver, glueFile), reflect(path)])
+    const [currentState, code] = await Promise.all([
         getCurrentState(envName, service),
-        reflect(path),
-        stage(path, implementations, service),
+        stage(
+            path,
+            reflection.revision,
+            implementations,
+            service,
+            Object.fromEntries(reflection.http.map(fn => [fn.name, 'http'] as const)),
+        ),
     ])
 
     const host = await sync(
@@ -40,7 +40,6 @@ try {
     )
 
     console.log('done.')
-
     console.log(`hosting on ${host}`)
 } catch (e) {
     const fileError = e as { code?: string; path?: string }
