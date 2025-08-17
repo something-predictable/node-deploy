@@ -21,7 +21,7 @@ export async function syncLambda(
         ),
     )
 
-    const functions = [...reflection.http, ...reflection.timers]
+    const functions = [...reflection.http, ...reflection.events, ...reflection.timers]
     const { missing, surplus, existing } = compare(functions, currentFunctions)
     const created = await Promise.all(
         missing.map(fn =>

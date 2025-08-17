@@ -101,6 +101,7 @@ export async function assignPolicy(
     service: string,
     region: string,
     account: string,
+    publishTopics: string[],
     additionalStatements: { Effect: string; Resource: string; Action: string[] }[],
 ) {
     console.log('assigning policy')
@@ -153,6 +154,11 @@ export async function assignPolicy(
                                 'dax:Scan',
                             ],
                         },
+                        ...publishTopics.map(topic => ({
+                            Effect: 'Allow',
+                            Action: ['sns:Publish'],
+                            Resource: `arn:aws:sns:${region}:${account}:${prefix}-${topic}-*`,
+                        })),
                         ...additionalStatements.map(as => ({
                             Effect: as.Effect,
                             Resource: as.Resource.replaceAll('$REGION', region).replaceAll(

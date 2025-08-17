@@ -63,6 +63,30 @@ export async function syncTriggers(
             )
             await syncTrigger(trigger, statement, env, prefix, service, fn.name)
         }),
+        ...reflection.events.map(async fn => {
+            const trigger = currentTriggers.find(t => t.name === fn.name)
+            if (!trigger) {
+                const statement = makeSnsStatementData(
+                    region,
+                    account,
+                    functions.find(f => f.name === fn.name)?.id ?? '',
+                    prefix,
+                    fn.topic,
+                    fn.type,
+                )
+                await addTrigger(env, prefix, service, fn.name, randomUUID(), statement)
+                return
+            }
+            const statement = makeSnsStatementData(
+                region,
+                account,
+                trigger.id,
+                prefix,
+                fn.topic,
+                fn.type,
+            )
+            await syncTrigger(trigger, statement, env, prefix, service, fn.name)
+        }),
     ])
 }
 
@@ -236,6 +260,23 @@ function makeEventBridgeStatementData(
         functionId,
         'events.amazonaws.com',
         `arn:aws:events:${region}:${account}:rule/${prefix}-${service}-*`,
+    )
+}
+
+function makeSnsStatementData(
+    region: string | undefined,
+    account: string | undefined,
+    functionId: string,
+    prefix: string,
+    topic: string,
+    type: string,
+) {
+    return makeStatementData(
+        region,
+        account,
+        functionId,
+        'sns.amazonaws.com',
+        `arn:aws:sns:${region}:${account}:${prefix}-${topic}-${type}`,
     )
 }
 

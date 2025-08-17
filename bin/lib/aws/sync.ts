@@ -4,6 +4,7 @@ import { getApi, syncGateway } from './services/api-gateway.js'
 import { syncEventBridge } from './services/event-bridge.js'
 import { getFunctions, syncLambda } from './services/lambda.js'
 import { assignPolicy, getRole, syncRole } from './services/roles.js'
+import { syncTopics } from './services/sns.js'
 import { syncTriggers } from './services/triggers.js'
 
 export async function getCurrentState(prefix: string, service: string) {
@@ -23,6 +24,7 @@ export async function sync(
     service: string,
     currentState: CurrentState,
     reflection: Reflection,
+    publishTopics: string[],
     corsSites: string[],
     environment: { [key: string]: string },
     code: { [name: string]: string },
@@ -47,7 +49,15 @@ export async function sync(
         throw new Error('Weird')
     }
 
-    await assignPolicy(env, prefix, service, region, account, provider.aws?.policyStatements ?? [])
+    await assignPolicy(
+        env,
+        prefix,
+        service,
+        region,
+        account,
+        publishTopics,
+        provider.aws?.policyStatements ?? [],
+    )
 
     const existingGatewayId = currentState.apis.api?.apiId
     if (existingGatewayId) {
@@ -81,6 +91,7 @@ export async function sync(
         await syncTriggers(env, prefix, service, fns, reflection, region, account, gatewayId)
     }
 
+    await syncTopics(env, fns, prefix, service, reflection, region, account)
     await syncEventBridge(env, region, account, prefix, service, reflection)
 
     return gatewayId && `https://${gatewayId}.execute-api.eu-central-1.amazonaws.com/`

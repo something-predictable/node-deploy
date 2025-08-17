@@ -26,6 +26,7 @@ export async function getGlue(path: string, prefix: string, resolver: Resolver, 
         }
         services: {
             [key: string]: {
+                publish?: string[]
                 cors?: string
                 env: { [key: string]: string }
                 secrets: { [key: string]: string }
@@ -34,12 +35,13 @@ export async function getGlue(path: string, prefix: string, resolver: Resolver, 
         }
     }
 
-    const { cors, env, secrets, ...provider } = glue.services[service] ?? {}
+    const { publish, cors, env, secrets, ...provider } = glue.services[service] ?? {}
     return {
         service,
         implementations: {
             ...glue.implementations,
         },
+        publishTopics: publish ?? [],
         corsSites: cors ? (glue.websites[cors] ?? []) : [],
         env: resolveEnv(env ?? {}, secrets ?? {}, prefix, service, resolver),
         ...provider,

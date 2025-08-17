@@ -15,7 +15,7 @@ const envName = envArg ?? pathOrEnvArg
 
 try {
     const resolver = new Resolver(envName)
-    const [{ service, implementations, corsSites, env, ...provider }, reflection] =
+    const [{ service, implementations, publishTopics, corsSites, env, ...provider }, reflection] =
         await Promise.all([getGlue(path, envName, resolver, glueFile), reflect(path)])
     const [currentState, code] = await Promise.all([
         getCurrentState(envName, service),
@@ -27,6 +27,7 @@ try {
             Object.fromEntries([
                 ...reflection.http.map(fn => [fn.name, 'http'] as const),
                 ...reflection.timers.map(fn => [fn.name, 'timer'] as const),
+                ...reflection.events.map(fn => [fn.name, 'event'] as const),
             ]),
         ),
     ])
@@ -36,6 +37,7 @@ try {
         service,
         currentState,
         reflection,
+        publishTopics,
         corsSites,
         await env,
         Object.fromEntries(code.map(c => [c.fn, c.code])),
