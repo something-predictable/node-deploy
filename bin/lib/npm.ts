@@ -3,17 +3,14 @@ import { exec } from 'node:child_process'
 export async function install(dir: string) {
     const exitCode = await new Promise<number | null>((resolve, reject) => {
         const proc = exec(
-            'npm install --no-optional --production',
+            'npm install --omit=dev',
             {
                 cwd: dir,
             },
             err => {
                 if (err) {
                     reject(err)
-                    return
                 }
-                proc.stdout?.pipe(process.stdout)
-                proc.stderr?.pipe(process.stderr)
             },
         )
         const onError = (error: Error) => {
@@ -26,10 +23,11 @@ export async function install(dir: string) {
             proc.removeListener('error', onError)
             proc.removeListener('exit', onExit)
         }
+        proc.stderr?.pipe(process.stderr)
         proc.addListener('error', onError)
         proc.addListener('exit', onExit)
     })
     if (exitCode !== 0) {
-        throw new Error('Non-zero exit code from npm')
+        throw new Error(`Non-zero exit code from npm install in ${dir}`)
     }
 }
