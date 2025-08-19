@@ -216,6 +216,7 @@ async function rollupAndMinify(
     const minified = []
     let rollupCache: RollupCache | undefined
     for (const fn of functions) {
+        let seriousWarnings = false
         const bundler = await rollup({
             input: 'entry',
             cache: rollupCache,
@@ -263,6 +264,9 @@ async function rollupAndMinify(
                         console.warn(warning.frame)
                     }
                 }
+                if (warning.code === 'UNRESOLVED_IMPORT') {
+                    seriousWarnings = true
+                }
             },
         })
         rollupCache = bundler.cache
@@ -278,6 +282,10 @@ async function rollupAndMinify(
                 objectShorthand: true,
             },
         })
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        if (seriousWarnings) {
+            throw new Error('Suspicious bundler warnings.')
+        }
         if (output.length !== 2) {
             console.error(output[2])
             throw new Error('Weird')

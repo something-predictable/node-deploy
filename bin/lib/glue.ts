@@ -15,17 +15,13 @@ export async function getGlue(path: string, prefix: string, resolver: Resolver, 
     ])
     const { name: service } = JSON.parse(packageJson) as { name: string }
     const glue = JSON.parse(glueJson) as {
-        implementations: {
-            [interfacePackage: string]: {
-                implementation: string
-                version: string
-            }
-        }
+        implementations: Implementations
         websites: {
             [key: string]: string[]
         }
         services: {
             [key: string]: {
+                implementations: Implementations
                 publish?: string[]
                 cors?: string
                 env: { [key: string]: string }
@@ -35,16 +31,25 @@ export async function getGlue(path: string, prefix: string, resolver: Resolver, 
         }
     }
 
-    const { publish, cors, env, secrets, ...provider } = glue.services[service] ?? {}
+    const { publish, cors, env, secrets, implementations, ...provider } =
+        glue.services[service] ?? {}
     return {
         service,
         implementations: {
             ...glue.implementations,
+            ...implementations,
         },
         publishTopics: publish ?? [],
         corsSites: cors ? (glue.websites[cors] ?? []) : [],
         env: resolveEnv(env ?? {}, secrets ?? {}, prefix, service, resolver),
         ...provider,
+    }
+}
+
+type Implementations = {
+    [interfacePackage: string]: {
+        implementation: string
+        version: string
     }
 }
 
