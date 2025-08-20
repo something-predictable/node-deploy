@@ -19,11 +19,17 @@ type Implementation = {
 }
 
 const aws = {
-    entry: (type: string, service: string, fn: string, revision: string | undefined) => `
+    entry: (
+        type: string,
+        service: string,
+        fn: string,
+        revision: string | undefined,
+        config: unknown,
+    ) => `
 import { awsHandler } from '@riddance/aws-host/${type}'
 import * as host from '@riddance/aws-host/${type}'
 if('setMeta' in host) {
-    host.setMeta('${service.replaceAll("'", "\\'")}','${fn}','${revision}')
+    host.setMeta('${service.replaceAll("'", "\\'")}','${fn}','${revision}',${JSON.stringify(config)})
 }
 
 import('./${fn}.js')
@@ -43,7 +49,11 @@ export async function stage(
     const stagePath = join(tmpdir(), 'riddance', 'stage', service)
     console.log(`stage dir: ${stagePath}`)
     console.log('staging...')
-    const { functions, hashes } = await copyAndPatchProject(path, stagePath, implementations)
+    const { functions, hashes, config } = await copyAndPatchProject(
+        path,
+        stagePath,
+        implementations,
+    )
 
     console.log('syncing dependencies...')
     await install(stagePath)
@@ -82,7 +92,16 @@ export async function stage(
     const nonFunctionFilesUnchanged = isDeepStrictEqual(previous, hashes)
     if (nonFunctionFilesUnchanged) {
         const code = [
-            ...(await rollupAndMinify(aws, path, stagePath, service, revision, changed, types)),
+            ...(await rollupAndMinify(
+                aws,
+                path,
+                stagePath,
+                service,
+                revision,
+                config,
+                changed,
+                types,
+            )),
             ...(await Promise.all(
                 unchanged.map(async fn => ({
                     fn,
@@ -99,6 +118,7 @@ export async function stage(
             stagePath,
             service,
             revision,
+            config,
             functions,
             types,
         )
@@ -140,7 +160,7 @@ async function copyAndPatchProject(
     hashes['package.json'] = createHash('sha256').update(updated).digest('base64')
     await writeFile(packageFile, updated)
 
-    return { functions: serviceFiles.map(f => f.slice(0, -3)), hashes }
+    return { functions: serviceFiles.map(f => f.slice(0, -3)), hashes, config: packageJson.config }
 }
 
 async function mkDirCopyFile(
@@ -200,7 +220,13 @@ async function find(dir: string): Promise<string[]> {
 }
 
 type Host = {
-    entry: (type: string, service: string, name: string, revision: string | undefined) => string
+    entry: (
+        type: string,
+        service: string,
+        name: string,
+        revision: string | undefined,
+        config: object | undefined,
+    ) => string
     patch?: (bundled: string) => string
 }
 
@@ -210,6 +236,7 @@ async function rollupAndMinify(
     stagePath: string,
     service: string,
     revision: string | undefined,
+    config: unknown,
     functions: string[],
     types: { [name: string]: 'http' | 'timer' | 'event' },
 ) {
@@ -229,7 +256,7 @@ async function rollupAndMinify(
             plugins: [
                 (virtual as unknown as (options: unknown) => Plugin)({
                     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                    entry: aws.entry(types[fn]!, service, fn, revision),
+                    entry: aws.entry(types[fn]!, service, fn, revision, config),
                 }),
                 nodeResolve({
                     exportConditions: ['node'],
