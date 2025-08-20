@@ -97,7 +97,7 @@ type AwsFunction = {
     LastModified: string
     FunctionArn: string
     FunctionName: string
-    Runtime: 'nodejs18.x' | 'nodejs20.x'
+    Runtime: 'nodejs18.x' | 'nodejs20.x' | 'nodejs22.x'
     Version: '$LATEST'
     PackageType: 'Zip'
     MemorySize: number
@@ -222,6 +222,7 @@ async function updateLambda(
         throw new Error('No config')
     }
     const cpus = lambdaArchitecture(config)
+    const awsConfig = lambdaConfig(config, role, environment)
     if (!isDeepStrictEqual({ cpus, hash: code.sha256 }, { cpus: awsFn.cpus, hash: awsFn.hash })) {
         console.log(`updating code for lambda ${name} (${awsFn.size} -> ${code.size})`)
         await okResponse(
@@ -238,7 +239,6 @@ async function updateLambda(
             'Error updating code for lambda ' + name,
         )
     }
-    const awsConfig = lambdaConfig(config, role, environment)
     if (
         !isDeepStrictEqual(
             {
@@ -297,13 +297,15 @@ function lambdaConfig(config: Config, role: string, environment: { [key: string]
 
 function getRuntime(config: Config) {
     switch (config.nodeVersion?.slice(0, 4)) {
+        case '>=22':
+            return 'nodejs22.x'
         case '>=20':
             return 'nodejs20.x'
         case '>=18':
             return 'nodejs18.x'
         default:
             throw new Error(
-                'Unsupported engine; please specify either "node": ">=18" or "node": ">=20" as an engine in your package.json.',
+                'Unsupported engine; please specify "node": ">=18", "node": ">=20", or "node": ">=22" as an engine in your package.json.',
             )
     }
 }
