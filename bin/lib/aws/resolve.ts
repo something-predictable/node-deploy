@@ -26,7 +26,7 @@ export class Resolver {
 async function getServiceApis(env: Promise<LocalEnv>, prefix: string) {
     const serviceApis: { [name: string]: string } = {}
     for await (const api of getApis(await env, prefix)) {
-        serviceApis[api.name] = api.apiEndpoint
+        serviceApis[api.name] = `${api.apiEndpoint}/`
     }
     return serviceApis
 }
