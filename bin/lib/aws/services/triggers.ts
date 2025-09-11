@@ -50,6 +50,7 @@ export async function syncTriggers(
                     functions.find(f => f.name === fn.name)?.id ?? '',
                     prefix,
                     service,
+                    fn.name,
                 )
                 await addTrigger(env, prefix, service, fn.name, randomUUID(), statement)
                 return
@@ -60,6 +61,7 @@ export async function syncTriggers(
                 trigger.id,
                 prefix,
                 service,
+                fn.name,
             )
             await syncTrigger(trigger, statement, env, prefix, service, fn.name)
         }),
@@ -253,13 +255,14 @@ function makeEventBridgeStatementData(
     functionId: string,
     prefix: string,
     service: string,
+    name: string,
 ) {
     return makeStatementData(
         region,
         account,
         functionId,
         'events.amazonaws.com',
-        `arn:aws:events:${region}:${account}:rule/${prefix}-${service}-*`,
+        `arn:aws:events:${region}:${account}:rule/${prefix}-${service}-${name}`,
     )
 }
 
