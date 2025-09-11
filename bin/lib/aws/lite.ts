@@ -140,11 +140,37 @@ async function awsStringRequest(
         },
         body,
     })
-    return await fetch(uri.toString(), {
-        method,
-        headers,
-        body: body || undefined,
-    })
+    for (let retries = 0; ; ++retries) {
+        const response = await fetch(uri.toString(), {
+            method,
+            headers,
+            body: body || undefined,
+        })
+        if (response.status === 429 && retries < 5) {
+            await response.arrayBuffer()
+            const after = response.headers.get('retry-after')
+            console.log(`  retrying #${retries + 1}${after ? ` (after ${after})` : ''}...`)
+            await setTimeout(retryDelay(after))
+            continue
+        }
+        return response
+    }
+}
+
+function retryDelay(value: string | null, def = 1000, jitter = 1000) {
+    const extra = Math.round(jitter * Math.random())
+    if (!value) {
+        return def + extra
+    }
+    const seconds = Number(value)
+    if (Number.isFinite(seconds)) {
+        return seconds * 1000 + extra
+    }
+    const time = new Date(value).getTime()
+    if (Number.isFinite(time)) {
+        return Math.max(0, time - Date.now()) + extra
+    }
+    return def + extra
 }
 
 function subdomain(service: string, region: string) {
@@ -160,13 +186,13 @@ export async function retry<T extends { url: string; text: () => Promise<string>
     request: () => Promise<T>,
     when: (response: T) => number | undefined,
 ) {
-    for (let attempts = 0; ; ++attempts) {
+    for (let retries = 0; ; ++retries) {
         const response = await request()
         const maxRetries = when(response)
-        if (maxRetries === undefined || maxRetries <= attempts) {
+        if (maxRetries === undefined || maxRetries <= retries) {
             return response
         }
-        console.log(`retrying #${attempts + 1}... (${response.url} -> ${await response.text()})`)
+        console.log(`  retrying #${retries + 1}... (${response.url} -> ${await response.text()})`)
         await setTimeout(500)
     }
 }
