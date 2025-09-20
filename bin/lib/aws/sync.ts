@@ -94,5 +94,8 @@ export async function sync(
     await syncTopics(env, fns, prefix, service, reflection, region, account)
     await syncEventBridge(env, region, account, prefix, service, reflection)
 
-    return gatewayId && `https://${gatewayId}.execute-api.eu-central-1.amazonaws.com/`
+    return {
+        region,
+        host: gatewayId && `https://${gatewayId}.execute-api.eu-central-1.amazonaws.com/`,
+    }
 }

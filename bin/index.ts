@@ -2,6 +2,7 @@
 
 import { reflect } from '@riddance/host/reflect'
 import { Resolver } from './lib/aws/resolve.js'
+import { logQueryLink } from './lib/aws/services/cloud-watch.js'
 import { getCurrentState, sync } from './lib/aws/sync.js'
 import { getGlue } from './lib/glue.js'
 import { stage } from './lib/stage.js'
@@ -32,7 +33,7 @@ try {
         ),
     ])
 
-    const host = await sync(
+    const { region, host } = await sync(
         envName,
         service,
         currentState,
@@ -47,8 +48,20 @@ try {
     console.log('done.')
 
     if (reflection.http.length !== 0) {
+        console.log()
         console.log(`hosting on ${host}`)
     }
+
+    console.log()
+    console.log(
+        `See logs here: ${logQueryLink(
+            region,
+            envName,
+            service,
+            [...reflection.http, ...reflection.timers, ...reflection.events].map(fn => fn.name),
+            reflection.revision,
+        )}`,
+    )
 } catch (e) {
     const fileError = e as { code?: string; path?: string }
     if (fileError.code === 'ENOENT' && fileError.path?.endsWith('glue.json')) {
