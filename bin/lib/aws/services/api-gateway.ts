@@ -269,7 +269,7 @@ export type AwsRoute = {
 
 function asRoute(
     integrationId: string | undefined,
-    fn: { method: string; pathPattern: string },
+    fn: { method: 'GET' | 'PATCH' | 'PUT' | 'POST' | 'DELETE'; pathPattern: string },
 ): AwsRoute {
     if (!integrationId) {
         throw new Error(`Weird: no integration ID for ${fn.method} ${fn.pathPattern}`)
