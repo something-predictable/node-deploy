@@ -322,7 +322,7 @@ async function rollupAndMinify(
             throw new Error('Weird')
         }
         const [{ code, map }] = output
-        if (!map || map.version !== 3) {
+        if (map?.version !== 3) {
             throw new Error('Source map missing.')
         }
         minified.push(pack(host, stagePath, fn, code, { ...map, version: 3 }))
