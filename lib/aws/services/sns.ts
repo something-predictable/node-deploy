@@ -1,9 +1,9 @@
 import { jsonResponse } from '@riddance/fetch'
 import type { Reflection } from '@riddance/host/reflect'
-import { awsFormRequest, type LocalEnv } from '../lite.js'
+import { type Context, awsFormRequest } from '../lite.js'
 
 export async function syncTopics(
-    env: LocalEnv,
+    context: Context,
     functions: { id: string; name: string }[],
     prefix: string,
     service: string,
@@ -14,10 +14,10 @@ export async function syncTopics(
     await Promise.all(
         reflection.events.map(async e => {
             const fullName = `${prefix}-${e.topic}-${e.type}`
-            await createTopic(env, prefix, e.topic, e.type, fullName)
+            await createTopic(context, prefix, e.topic, e.type, fullName)
             const lambdaArn = functions.find(f => f.name === e.name)?.id ?? ''
             await subscribe(
-                env,
+                context,
                 region,
                 account,
                 prefix,
@@ -32,16 +32,16 @@ export async function syncTopics(
 }
 
 async function createTopic(
-    env: LocalEnv,
+    context: Context,
     prefix: string,
     name: string,
     type: string,
     fullName: string,
 ) {
-    console.log(`creating ${name} topic for ${type}`)
+    context.log.trace(`creating ${name} topic for ${type}`)
     await jsonResponse(
         awsFormRequest(
-            env,
+            context,
             'POST',
             'sns',
             '',
@@ -60,7 +60,7 @@ async function createTopic(
 }
 
 async function subscribe(
-    env: LocalEnv,
+    context: Context,
     region: string,
     account: string,
     prefix: string,
@@ -70,10 +70,10 @@ async function subscribe(
     type: string,
     fullName: string,
 ) {
-    console.log(`subscribing to ${name} ${type}`)
+    context.log.trace(`subscribing to ${name} ${type}`)
     await jsonResponse(
         awsFormRequest(
-            env,
+            context,
             'POST',
             'sns',
             '',

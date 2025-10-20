@@ -1,6 +1,6 @@
 import { jsonResponse, okResponse, throwOnNotOK } from '@riddance/fetch'
 import { setTimeout } from 'node:timers/promises'
-import { LocalEnv, awsRequest } from '../lite.js'
+import { type Context, awsRequest } from '../lite.js'
 
 export type AwsRole = {
     Arn: string
@@ -17,12 +17,12 @@ export type AwsRole = {
 }
 
 export async function getRole(
-    env: LocalEnv,
+    context: Context,
     prefix: string,
     service: string,
 ): Promise<AwsRole | undefined> {
     const response = await awsRequest(
-        env,
+        context,
         'GET',
         'iam',
         `?Action=GetRole&RoleName=${prefix}-${service}-role&Version=2010-05-08`,
@@ -43,17 +43,17 @@ export async function getRole(
 }
 
 export async function syncRole(
-    env: LocalEnv,
+    context: Context,
     prefix: string,
     service: string,
     role: AwsRole | undefined,
 ) {
-    role ??= await createRole(env, prefix, service)
+    role ??= await createRole(context, prefix, service)
     return role.Arn
 }
 
-async function createRole(env: LocalEnv, prefix: string, service: string) {
-    console.log('creating role')
+async function createRole(context: Context, prefix: string, service: string) {
+    context.log.trace('creating role')
     const response = await jsonResponse<{
         CreateRoleResponse: {
             CreateRoleResult: {
@@ -62,7 +62,7 @@ async function createRole(env: LocalEnv, prefix: string, service: string) {
         }
     }>(
         awsRequest(
-            env,
+            context,
             'GET',
             'iam',
             `?${new URLSearchParams({
@@ -96,7 +96,7 @@ async function createRole(env: LocalEnv, prefix: string, service: string) {
 }
 
 export async function assignPolicy(
-    env: LocalEnv,
+    context: Context,
     prefix: string,
     service: string,
     region: string,
@@ -104,10 +104,10 @@ export async function assignPolicy(
     publishTopics: string[],
     additionalStatements: { Effect: string; Resource: string; Action: string[] }[],
 ) {
-    console.log('assigning policy')
+    context.log.trace('assigning policy')
     await okResponse(
         awsRequest(
-            env,
+            context,
             'GET',
             'iam',
             `?${new URLSearchParams({

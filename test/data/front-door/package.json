@@ -1,0 +1,12 @@
+{
+  "name": "front-door",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@riddance/service": "0.2.8",
+    "@riddance/fetch": "0.1.3"
+  }
+}

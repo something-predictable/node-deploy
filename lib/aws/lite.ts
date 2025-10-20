@@ -1,4 +1,4 @@
-import { thrownHasStatus } from '@riddance/fetch'
+import { missing, thrownHasStatus } from '@riddance/fetch'
 import { SignatureV4 } from '@smithy/signature-v4'
 import { createHash, createHmac } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
@@ -6,16 +6,17 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout } from 'node:timers/promises'
 
-export type LocalEnv = {
+let cachedConfigLines: string[] | undefined
+
+export async function localAwsEnv(
+    region: string | undefined,
+    profile: string,
+): Promise<{
     AWS_REGION: string
     AWS_ACCESS_KEY_ID: string
     AWS_SECRET_ACCESS_KEY: string
     AWS_SESSION_TOKEN?: string
-}
-
-let cachedConfigLines: string[] | undefined
-
-export async function localAwsEnv(region: string | undefined, profile: string): Promise<LocalEnv> {
+}> {
     let { AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN } = {
         AWS_REGION: region ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION,
         AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
@@ -65,8 +66,13 @@ export async function localAwsEnv(region: string | undefined, profile: string): 
     return { AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN }
 }
 
+export type Context = {
+    log: { trace: (message: string) => void }
+    env: { [key: string]: string | undefined }
+}
+
 export function awsRequest(
-    env: LocalEnv,
+    context: Context,
     method: string,
     service: string,
     path: string,
@@ -75,7 +81,7 @@ export function awsRequest(
     contentType?: string,
 ) {
     return awsStringRequest(
-        env,
+        context,
         method,
         service,
         path,
@@ -86,14 +92,14 @@ export function awsRequest(
 }
 
 export function awsFormRequest(
-    env: LocalEnv,
+    context: Context,
     method: string,
     service: string,
     path: string,
     body: URLSearchParams,
 ) {
     return awsStringRequest(
-        env,
+        context,
         method,
         service,
         path,
@@ -103,7 +109,7 @@ export function awsFormRequest(
 }
 
 async function awsStringRequest(
-    env: LocalEnv,
+    { env, log }: Context,
     method: string,
     service: string,
     path: string,
@@ -111,17 +117,18 @@ async function awsStringRequest(
     contentType: string,
     target?: string,
 ) {
+    const region = service === 'iam' ? 'us-east-1' : (env.AWS_REGION ?? missing('AWS_REGION'))
     const signer = new SignatureV4({
         service,
-        region: service === 'iam' ? 'us-east-1' : env.AWS_REGION,
+        region,
         sha256: AwsHash,
         credentials: {
-            accessKeyId: env.AWS_ACCESS_KEY_ID,
-            secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+            accessKeyId: env.AWS_ACCESS_KEY_ID ?? missing('AWS_ACCESS_KEY_ID'),
+            secretAccessKey: env.AWS_SECRET_ACCESS_KEY ?? missing('AWS_SECRET_ACCESS_KEY'),
             sessionToken: env.AWS_SESSION_TOKEN,
         },
     })
-    const uri = new URL(`https://${subdomain(service, env.AWS_REGION)}.amazonaws.com${path}`)
+    const uri = new URL(`https://${subdomain(service, region)}.amazonaws.com${path}`)
     const query: { [key: string]: string } = {}
     uri.searchParams.forEach((value, key) => {
         query[key] = value
@@ -149,7 +156,7 @@ async function awsStringRequest(
         if (response.status === 429 && retries < 5) {
             await response.arrayBuffer()
             const after = response.headers.get('retry-after')
-            console.log(`  retrying #${retries + 1}${after ? ` (after ${after})` : ''}...`)
+            log.trace(`  retrying #${retries + 1}${after ? ` (after ${after})` : ''}...`)
             await setTimeout(retryDelay(after))
             continue
         }
@@ -183,6 +190,7 @@ function subdomain(service: string, region: string) {
 }
 
 export async function retry<T extends { url: string; text: () => Promise<string> }>(
+    log: Context['log'],
     request: () => Promise<T>,
     when: (response: T) => number | undefined,
 ) {
@@ -192,7 +200,7 @@ export async function retry<T extends { url: string; text: () => Promise<string>
         if (maxRetries === undefined || maxRetries <= retries) {
             return response
         }
-        console.log(`  retrying #${retries + 1}... (${response.url} -> ${await response.text()})`)
+        log.trace(`  retrying #${retries + 1}... (${response.url} -> ${await response.text()})`)
         await setTimeout(500)
     }
 }

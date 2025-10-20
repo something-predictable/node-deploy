@@ -1,0 +1,19 @@
+{
+  "implementations": {
+    "@riddance/service": {
+      "implementation": "@riddance/aws-host",
+      "version": "0.1.4"
+    }
+  },
+  "services": {
+    "front-door": {
+      "env": {
+        "GREETING_BASE_URL": "$BASE_URL(greeting)"
+      }
+    },
+    "greeting": {
+      "publish": ["status"]
+    },
+    "subber": {}
+  }
+}

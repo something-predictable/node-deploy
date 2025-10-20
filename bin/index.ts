@@ -1,11 +1,7 @@
 #!/usr/bin/env node
 
-import { reflect } from '@riddance/host/reflect'
-import { Resolver } from './lib/aws/resolve.js'
-import { logQueryLink } from './lib/aws/services/cloud-watch.js'
-import { getCurrentState, sync } from './lib/aws/sync.js'
-import { getGlue } from './lib/glue.js'
-import { stage } from './lib/stage.js'
+import { deploy } from '../index.js'
+import { localAwsEnv } from '../lib/aws/lite.js'
 
 const [, , pathOrEnvArg, envArg, glueFile] = process.argv
 if (!pathOrEnvArg) {
@@ -15,53 +11,37 @@ const path = envArg ? pathOrEnvArg : process.cwd()
 const envName = envArg ?? pathOrEnvArg
 
 try {
-    const resolver = new Resolver(envName)
-    const [{ service, implementations, publishTopics, corsSites, env, ...provider }, reflection] =
-        await Promise.all([getGlue(path, envName, resolver, glueFile), reflect(path)])
-    const [currentState, code] = await Promise.all([
-        getCurrentState(envName, service),
-        stage(
-            path,
-            reflection.revision,
-            implementations,
-            service,
-            Object.fromEntries([
-                ...reflection.http.map(fn => [fn.name, 'http'] as const),
-                ...reflection.timers.map(fn => [fn.name, 'timer'] as const),
-                ...reflection.events.map(fn => [fn.name, 'event'] as const),
-            ]),
-        ),
-    ])
-
-    const { region, host } = await sync(
+    const { logLink, host } = await deploy(
+        {
+            env: await localAwsEnv(undefined, envName),
+            log: {
+                trace: (message: string) => {
+                    console.log(message)
+                },
+                warn: (message: string) => {
+                    console.warn(message)
+                },
+                error: (message: string) => {
+                    console.error(message)
+                },
+            },
+        },
         envName,
-        service,
-        currentState,
-        reflection,
-        publishTopics,
-        corsSites,
-        await env,
-        Object.fromEntries(code.map(c => [c.fn, c.code])),
-        provider,
+        path,
+        glueFile,
     )
 
     console.log('done.')
 
-    if (reflection.http.length !== 0) {
+    if (host) {
         console.log()
         console.log(`hosting on ${host}`)
     }
 
-    console.log()
-    console.log(
-        `See logs here: ${logQueryLink(
-            region,
-            envName,
-            service,
-            [...reflection.http, ...reflection.timers, ...reflection.events].map(fn => fn.name),
-            reflection.revision,
-        )}`,
-    )
+    if (logLink) {
+        console.log()
+        console.log(`See logs here: ${logLink}`)
+    }
 } catch (e) {
     const fileError = e as { code?: string; path?: string }
     if (fileError.code === 'ENOENT' && fileError.path?.endsWith('glue.json')) {

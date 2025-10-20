@@ -1,18 +1,18 @@
 import type { Reflection } from '@riddance/host/reflect'
-import { localAwsEnv } from './lite.js'
+import { type Context } from './lite.js'
 import { getApi, syncGateway } from './services/api-gateway.js'
+import { logQueryLink } from './services/cloud-watch.js'
 import { syncEventBridge } from './services/event-bridge.js'
 import { getFunctions, syncLambda } from './services/lambda.js'
 import { assignPolicy, getRole, syncRole } from './services/roles.js'
 import { syncTopics } from './services/sns.js'
 import { syncTriggers } from './services/triggers.js'
 
-export async function getCurrentState(prefix: string, service: string) {
-    const env = await localAwsEnv(undefined, prefix)
+export async function getCurrentState(context: Context, prefix: string, service: string) {
     const [role, functions, apis] = await Promise.all([
-        getRole(env, prefix, service),
-        getFunctions(env, prefix, service),
-        getApi(env, prefix, service),
+        getRole(context, prefix, service),
+        getFunctions(context, prefix, service),
+        getApi(context, prefix, service),
     ])
     return { role, functions, apis }
 }
@@ -20,6 +20,7 @@ export async function getCurrentState(prefix: string, service: string) {
 export type CurrentState = Awaited<ReturnType<typeof getCurrentState>>
 
 export async function sync(
+    context: Context,
     prefix: string,
     service: string,
     currentState: CurrentState,
@@ -32,11 +33,10 @@ export async function sync(
         aws?: { policyStatements: { Effect: string; Resource: string; Action: string[] }[] }
     },
 ) {
-    const env = await localAwsEnv(undefined, prefix)
-    const role = await syncRole(env, prefix, service, currentState.role)
+    const role = await syncRole(context, prefix, service, currentState.role)
 
     const fns = await syncLambda(
-        env,
+        context,
         prefix,
         currentState.functions,
         reflection,
@@ -50,7 +50,7 @@ export async function sync(
     }
 
     await assignPolicy(
-        env,
+        context,
         prefix,
         service,
         region,
@@ -62,7 +62,7 @@ export async function sync(
     const existingGatewayId = currentState.apis.api?.apiId
     if (existingGatewayId) {
         await syncTriggers(
-            env,
+            context,
             prefix,
             service,
             fns,
@@ -77,7 +77,7 @@ export async function sync(
         reflection.http.length === 0
             ? undefined
             : await syncGateway(
-                  env,
+                  context,
                   region,
                   account,
                   prefix,
@@ -88,14 +88,20 @@ export async function sync(
               )
 
     if (!existingGatewayId) {
-        await syncTriggers(env, prefix, service, fns, reflection, region, account, gatewayId)
+        await syncTriggers(context, prefix, service, fns, reflection, region, account, gatewayId)
     }
 
-    await syncTopics(env, fns, prefix, service, reflection, region, account)
-    await syncEventBridge(env, region, account, prefix, service, reflection)
+    await syncTopics(context, fns, prefix, service, reflection, region, account)
+    await syncEventBridge(context, region, account, prefix, service, reflection)
 
     return {
-        region,
+        logLink: logQueryLink(
+            region,
+            prefix,
+            service,
+            [...reflection.http, ...reflection.timers, ...reflection.events].map(fn => fn.name),
+            reflection.revision,
+        ),
         host: gatewayId && `https://${gatewayId}.execute-api.eu-central-1.amazonaws.com/`,
     }
 }

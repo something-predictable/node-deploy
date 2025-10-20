@@ -2,10 +2,10 @@ import { jsonResponse, okResponse, throwOnNotOK } from '@riddance/fetch'
 import { Reflection } from '@riddance/host/reflect'
 import { isDeepStrictEqual } from 'node:util'
 import { compare } from '../diff.js'
-import { LocalEnv, awsRequest, retryConflict } from '../lite.js'
+import { awsRequest, retryConflict, type Context } from '../lite.js'
 
 export async function syncGateway(
-    env: LocalEnv,
+    context: Context,
     region: string | undefined,
     account: string | undefined,
     prefix: string,
@@ -15,10 +15,10 @@ export async function syncGateway(
     corsSites: string[],
 ) {
     if (currentGateway.api) {
-        await syncGatewayApi(currentGateway.api, env, prefix, service, corsSites)
-        await syncStage(env, prefix, service, currentGateway.api.apiId, currentGateway.stage)
+        await syncGatewayApi(context, currentGateway.api, prefix, service, corsSites)
+        await syncStage(context, prefix, service, currentGateway.api.apiId, currentGateway.stage)
         const { ids, surplus: surplusIntegrations } = await syncIntegrations(
-            env,
+            context,
             region,
             account,
             prefix,
@@ -40,11 +40,11 @@ export async function syncGateway(
                 ...r,
             })),
         )
-        await Promise.all(surplus.map(i => deleteRoute(env, currentGateway.api.apiId, i)))
+        await Promise.all(surplus.map(i => deleteRoute(context, currentGateway.api.apiId, i)))
         await Promise.all([
             ...missing.map(fn =>
                 createRoute(
-                    env,
+                    context,
                     currentGateway.api.apiId,
                     asRoute(integrationIdByName[fn.name], fn),
                 ),
@@ -56,21 +56,27 @@ export async function syncGateway(
                 if (isDeepStrictEqual(ex, route)) {
                     return
                 }
-                await updateRoute(env, currentGateway.api.apiId, routeId, route)
+                await updateRoute(context, currentGateway.api.apiId, routeId, route)
             }),
         ])
         await Promise.all(
             surplusIntegrations.map(i =>
-                deleteIntegration(env, region, account, currentGateway.api.apiId, i.integrationId),
+                deleteIntegration(
+                    context,
+                    region,
+                    account,
+                    currentGateway.api.apiId,
+                    i.integrationId,
+                ),
             ),
         )
         return currentGateway.api.apiId
     } else {
-        const gateway = await createGateway(env, prefix, service, corsSites)
+        const gateway = await createGateway(context, prefix, service, corsSites)
         const ids = await Promise.all(
             reflection.http.map(fn =>
                 createIntegration(
-                    env,
+                    context,
                     gateway.apiId,
                     fn.name,
                     asIntegration(region, account, prefix, service, fn),
@@ -80,7 +86,7 @@ export async function syncGateway(
         const integrationIdByName = Object.fromEntries(ids)
         await Promise.all(
             reflection.http.map(fn =>
-                createRoute(env, gateway.apiId, asRoute(integrationIdByName[fn.name], fn)),
+                createRoute(context, gateway.apiId, asRoute(integrationIdByName[fn.name], fn)),
             ),
         )
         return gateway.apiId
@@ -88,7 +94,7 @@ export async function syncGateway(
 }
 
 async function syncIntegrations(
-    env: LocalEnv,
+    context: Context,
     region: string | undefined,
     account: string | undefined,
     prefix: string,
@@ -101,7 +107,7 @@ async function syncIntegrations(
     const ids = await Promise.all([
         ...missing.map(fn =>
             createIntegration(
-                env,
+                context,
                 apiId,
                 fn.name,
                 asIntegration(region, account, prefix, service, fn),
@@ -114,7 +120,7 @@ async function syncIntegrations(
             if (isDeepStrictEqual(ex, integration)) {
                 return [name, integrationId] as [string, string]
             }
-            await updateIntegration(env, apiId, integrationId, integration)
+            await updateIntegration(context, apiId, integrationId, integration)
             return [name, integrationId] as [string, string]
         }),
     ])
@@ -138,10 +144,10 @@ export type AwsGatewayApi = {
     }
 }
 
-export async function* getApis(env: LocalEnv, prefix: string) {
+export async function* getApis(context: Context, prefix: string) {
     for (let next = ''; ; ) {
         const page = await jsonResponse<{ items: AwsGatewayApi[]; nextToken?: string }>(
-            awsRequest(env, 'GET', 'apigateway', `/v2/apis/${next}`),
+            awsRequest(context, 'GET', 'apigateway', `/v2/apis/${next}`),
             'Error getting APIs.',
         )
         for (const item of page.items.filter(a => a.name.startsWith(`${prefix}-`))) {
@@ -154,14 +160,14 @@ export async function* getApis(env: LocalEnv, prefix: string) {
     }
 }
 
-export async function getApi(env: LocalEnv, prefix: string, service: string) {
+export async function getApi(context: Context, prefix: string, service: string) {
     const name = `${prefix}-${service}`
-    for await (const api of getApis(env, prefix)) {
+    for await (const api of getApis(context, prefix)) {
         if (api.name === name) {
             const [integrations, routes, stage] = await Promise.all([
-                getIntegrations(env, api.apiId, name.length + 1),
-                getRoutes(env, api.apiId),
-                getStage(env, api.apiId),
+                getIntegrations(context, api.apiId, name.length + 1),
+                getRoutes(context, api.apiId),
+                getStage(context, api.apiId),
             ])
             return { api, integrations, routes: routes.items, stage }
         }
@@ -178,11 +184,11 @@ export type AwsIntegration = {
     timeoutInMillis: number | undefined
 }
 
-async function getIntegrations(env: LocalEnv, apiId: string, prefixLength: number) {
+async function getIntegrations(context: Context, apiId: string, prefixLength: number) {
     const { items } = await jsonResponse<{
         items: (AwsIntegration & { integrationId: string })[]
     }>(
-        awsRequest(env, 'GET', 'apigateway', `/v2/apis/${apiId}/integrations`),
+        awsRequest(context, 'GET', 'apigateway', `/v2/apis/${apiId}/integrations`),
         'Error getting API integrations.',
     )
     return items.map(i => ({
@@ -213,38 +219,52 @@ function asIntegration(
 }
 
 async function createIntegration(
-    env: LocalEnv,
+    context: Context,
     apiId: string,
     name: string,
     integration: AwsIntegration,
 ) {
-    console.log('creating API integration')
+    context.log.trace('creating API integration')
     const created = await retryConflict(() =>
         jsonResponse<{ integrationId: string }>(
-            awsRequest(env, 'POST', 'apigateway', `/v2/apis/${apiId}/integrations`, integration),
+            awsRequest(
+                context,
+                'POST',
+                'apigateway',
+                `/v2/apis/${apiId}/integrations`,
+                integration,
+            ),
             'Error creating API integration.',
         ),
     )
-    console.log(`  from ${apiId} to ${integration.integrationUri} as ${created.integrationId}`)
+    context.log.trace(
+        `  from ${apiId} to ${integration.integrationUri} as ${created.integrationId}`,
+    )
     return [name, created.integrationId] as [string, string]
 }
 
 async function updateIntegration(
-    env: LocalEnv,
+    context: Context,
     apiId: string,
     id: string,
     integration: AwsIntegration,
 ) {
-    console.log('updating API integration ' + id)
-    console.log(`  from ${apiId} to ${integration.integrationUri}`)
+    context.log.trace('updating API integration ' + id)
+    context.log.trace(`  from ${apiId} to ${integration.integrationUri}`)
     await okResponse(
-        awsRequest(env, 'PATCH', 'apigateway', `/v2/apis/${apiId}/integrations/${id}`, integration),
+        awsRequest(
+            context,
+            'PATCH',
+            'apigateway',
+            `/v2/apis/${apiId}/integrations/${id}`,
+            integration,
+        ),
         'Error updating API integration',
     )
 }
 
 async function deleteIntegration(
-    env: LocalEnv,
+    context: Context,
     region: string | undefined,
     account: string | undefined,
     apiId: string,
@@ -253,9 +273,9 @@ async function deleteIntegration(
     if (!region || !account) {
         throw new Error('Weird')
     }
-    console.log('deleting API integration ' + id)
+    context.log.trace('deleting API integration ' + id)
     await okResponse(
-        awsRequest(env, 'DELETE', 'apigateway', `/v2/apis/${apiId}/integrations/${id}`),
+        awsRequest(context, 'DELETE', 'apigateway', `/v2/apis/${apiId}/integrations/${id}`),
         'Error deleting API integration.',
     )
 }
@@ -292,45 +312,50 @@ function trimTrailingSlash(pathPattern: string) {
     return pathPattern
 }
 
-async function getRoutes(env: LocalEnv, apiId: string) {
+async function getRoutes(context: Context, apiId: string) {
     return await jsonResponse<{
         items: (AwsRoute & { routeId: string })[]
     }>(
-        awsRequest(env, 'GET', 'apigateway', `/v2/apis/${apiId}/routes`),
+        awsRequest(context, 'GET', 'apigateway', `/v2/apis/${apiId}/routes`),
         'Error getting API routes.',
     )
 }
 
-async function createRoute(env: LocalEnv, apiId: string, route: AwsRoute) {
-    console.log(`creating route ${route.routeKey} to ${route.target}`)
+async function createRoute(context: Context, apiId: string, route: AwsRoute) {
+    context.log.trace(`creating route ${route.routeKey} to ${route.target}`)
     await retryConflict(() =>
         okResponse(
-            awsRequest(env, 'POST', 'apigateway', `/v2/apis/${apiId}/routes`, route),
+            awsRequest(context, 'POST', 'apigateway', `/v2/apis/${apiId}/routes`, route),
             'Error creating API route.',
         ),
     )
 }
 
-async function updateRoute(env: LocalEnv, apiId: string, id: string, route: AwsRoute) {
-    console.log(`updating API route ${id} to ${route.target}`)
+async function updateRoute(context: Context, apiId: string, id: string, route: AwsRoute) {
+    context.log.trace(`updating API route ${id} to ${route.target}`)
     await okResponse(
-        awsRequest(env, 'PATCH', 'apigateway', `/v2/apis/${apiId}/routes/${id}`, route),
+        awsRequest(context, 'PATCH', 'apigateway', `/v2/apis/${apiId}/routes/${id}`, route),
         'Error updating API route.',
     )
 }
 
-async function deleteRoute(env: LocalEnv, apiId: string, route: AwsRoute & { routeId: string }) {
-    console.log(`deleting API route ${route.routeId} from ${route.target}`)
+async function deleteRoute(context: Context, apiId: string, route: AwsRoute & { routeId: string }) {
+    context.log.trace(`deleting API route ${route.routeId} from ${route.target}`)
     await okResponse(
-        awsRequest(env, 'DELETE', 'apigateway', `/v2/apis/${apiId}/routes/${route.routeId}`),
+        awsRequest(context, 'DELETE', 'apigateway', `/v2/apis/${apiId}/routes/${route.routeId}`),
         'Error deleting API route.',
     )
 }
 
-async function createGateway(env: LocalEnv, prefix: string, service: string, corsSites: string[]) {
-    console.log('creating gateway')
+async function createGateway(
+    context: Context,
+    prefix: string,
+    service: string,
+    corsSites: string[],
+) {
+    context.log.trace('creating gateway')
     const gateway = await jsonResponse<{ apiId: string }>(
-        awsRequest(env, 'POST', 'apigateway', `/v2/apis/`, {
+        awsRequest(context, 'POST', 'apigateway', `/v2/apis/`, {
             name: `${prefix}-${service}`,
             protocolType: 'HTTP',
             corsConfiguration: corsSettings(corsSites),
@@ -342,13 +367,13 @@ async function createGateway(env: LocalEnv, prefix: string, service: string, cor
         }),
         'Error creating gateway.',
     )
-    await syncStage(env, prefix, service, gateway.apiId, undefined)
+    await syncStage(context, prefix, service, gateway.apiId, undefined)
     return gateway
 }
 
 async function syncGatewayApi(
+    context: Context,
     gateway: AwsGatewayApi,
-    env: LocalEnv,
     prefix: string,
     service: string,
     corsSites: string[],
@@ -357,9 +382,9 @@ async function syncGatewayApi(
     if (isDeepStrictEqual(corsConfiguration, gateway.corsConfiguration)) {
         return
     }
-    console.log('updating gateway')
+    context.log.trace('updating gateway')
     await okResponse(
-        awsRequest(env, 'PATCH', 'apigateway', `/v2/apis/${gateway.apiId}`, {
+        awsRequest(context, 'PATCH', 'apigateway', `/v2/apis/${gateway.apiId}`, {
             name: `${prefix}-${service}`,
             protocolType: 'HTTP',
             corsConfiguration,
@@ -410,8 +435,13 @@ export type ApiStage = {
     apiGatewayManaged: boolean
 }
 
-async function getStage(env: LocalEnv, apiId: string) {
-    const response = await awsRequest(env, 'GET', 'apigateway', `/v2/apis/${apiId}/stages/$default`)
+async function getStage(context: Context, apiId: string) {
+    const response = await awsRequest(
+        context,
+        'GET',
+        'apigateway',
+        `/v2/apis/${apiId}/stages/$default`,
+    )
     if (response.status === 404) {
         return undefined
     }
@@ -420,7 +450,7 @@ async function getStage(env: LocalEnv, apiId: string) {
 }
 
 async function syncStage(
-    env: LocalEnv,
+    context: Context,
     prefix: string,
     service: string,
     apiId: string,
@@ -428,7 +458,7 @@ async function syncStage(
 ) {
     if (!stage) {
         await okResponse(
-            awsRequest(env, 'POST', 'apigateway', `/v2/apis/${apiId}/stages`, {
+            awsRequest(context, 'POST', 'apigateway', `/v2/apis/${apiId}/stages`, {
                 stageName: '$default',
                 autoDeploy: true,
                 tags: {

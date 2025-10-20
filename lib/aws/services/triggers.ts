@@ -2,19 +2,19 @@ import { jsonResponse, okResponse } from '@riddance/fetch'
 import { Reflection } from '@riddance/host/reflect'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
-import { LocalEnv, awsRequest, isNotFound } from '../lite.js'
+import { type Context, awsRequest, isNotFound } from '../lite.js'
 
 export async function syncTriggers(
-    env: LocalEnv,
+    context: Context,
     prefix: string,
     service: string,
     functions: { id: string; name: string }[],
     reflection: Reflection,
-    region: string | undefined,
-    account: string | undefined,
+    region: string,
+    account: string,
     apiGatewayId: string | undefined,
 ) {
-    const currentTriggers = await getTriggers(env, prefix, service, functions)
+    const currentTriggers = await getTriggers(context, prefix, service, functions)
     await Promise.all([
         ...reflection.http.map(async fn => {
             const trigger = currentTriggers.find(t => t.name === fn.name)
@@ -29,7 +29,7 @@ export async function syncTriggers(
                     functions.find(f => f.name === fn.name)?.id ?? '',
                     fn,
                 )
-                await addTrigger(env, prefix, service, fn.name, randomUUID(), statement)
+                await addTrigger(context, prefix, service, fn.name, randomUUID(), statement)
                 return
             }
             const statement = makeApiGatewayStatementData(
@@ -39,7 +39,7 @@ export async function syncTriggers(
                 trigger.id,
                 fn,
             )
-            await syncTrigger(trigger, statement, env, prefix, service, fn.name)
+            await syncTrigger(trigger, statement, context, prefix, service, fn.name)
         }),
         ...reflection.timers.map(async fn => {
             const trigger = currentTriggers.find(t => t.name === fn.name)
@@ -52,7 +52,7 @@ export async function syncTriggers(
                     service,
                     fn.name,
                 )
-                await addTrigger(env, prefix, service, fn.name, randomUUID(), statement)
+                await addTrigger(context, prefix, service, fn.name, randomUUID(), statement)
                 return
             }
             const statement = makeEventBridgeStatementData(
@@ -63,7 +63,7 @@ export async function syncTriggers(
                 service,
                 fn.name,
             )
-            await syncTrigger(trigger, statement, env, prefix, service, fn.name)
+            await syncTrigger(trigger, statement, context, prefix, service, fn.name)
         }),
         ...reflection.events.map(async fn => {
             const trigger = currentTriggers.find(t => t.name === fn.name)
@@ -76,7 +76,7 @@ export async function syncTriggers(
                     fn.topic,
                     fn.type,
                 )
-                await addTrigger(env, prefix, service, fn.name, randomUUID(), statement)
+                await addTrigger(context, prefix, service, fn.name, randomUUID(), statement)
                 return
             }
             const statement = makeSnsStatementData(
@@ -87,7 +87,7 @@ export async function syncTriggers(
                 fn.topic,
                 fn.type,
             )
-            await syncTrigger(trigger, statement, env, prefix, service, fn.name)
+            await syncTrigger(trigger, statement, context, prefix, service, fn.name)
         }),
     ])
 }
@@ -114,7 +114,7 @@ type AwsStatement = {
 async function syncTrigger(
     trigger: AwsTrigger,
     statement: StatementData,
-    env: LocalEnv,
+    context: Context,
     prefix: string,
     service: string,
     name: string,
@@ -124,22 +124,22 @@ async function syncTrigger(
         for (const { Sid, ...data } of trigger.statements) {
             if (isDeepStrictEqual(data, statement)) {
                 if (exists) {
-                    await deleteTrigger(env, prefix, service, name, Sid)
+                    await deleteTrigger(context, prefix, service, name, Sid)
                 } else {
                     exists = true
                 }
             } else {
-                await deleteTrigger(env, prefix, service, name, Sid)
+                await deleteTrigger(context, prefix, service, name, Sid)
             }
         }
     }
     if (!exists) {
-        await addTrigger(env, prefix, service, name, randomUUID(), statement)
+        await addTrigger(context, prefix, service, name, randomUUID(), statement)
     }
 }
 
 export async function getTriggers(
-    env: LocalEnv,
+    context: Context,
     prefix: string,
     service: string,
     functions: { id: string; name: string }[],
@@ -155,7 +155,7 @@ export async function getTriggers(
                             (
                                 await jsonResponse<{ Policy: string }>(
                                     awsRequest(
-                                        env,
+                                        context,
                                         'GET',
                                         'lambda',
                                         `/2015-03-31/functions/${prefix}-${service}-${fn.name}/policy/`,
@@ -180,7 +180,7 @@ export async function getTriggers(
 }
 
 async function addTrigger(
-    env: LocalEnv,
+    context: Context,
     prefix: string,
     service: string,
     name: string,
@@ -188,11 +188,11 @@ async function addTrigger(
     statement: StatementData,
 ) {
     const arn = statement.Condition.ArnLike['AWS:SourceArn']
-    console.log(`adding trigger ${id} to lambda ${name}`)
-    console.log(`  from ${arn}`)
+    context.log.trace(`adding trigger ${id} to lambda ${name}`)
+    context.log.trace(`  from ${arn}`)
     await okResponse(
         awsRequest(
-            env,
+            context,
             'POST',
             'lambda',
             `/2015-03-31/functions/${prefix}-${service}-${name}/policy/`,
@@ -208,16 +208,16 @@ async function addTrigger(
 }
 
 async function deleteTrigger(
-    env: LocalEnv,
+    context: Context,
     prefix: string,
     service: string,
     name: string,
     id: string,
 ) {
-    console.log(`deleting trigger ${id} from ${name}`)
+    context.log.trace(`deleting trigger ${id} from ${name}`)
     await okResponse(
         awsRequest(
-            env,
+            context,
             'DELETE',
             'lambda',
             `/2015-03-31/functions/${prefix}-${service}-${name}/policy/${id}`,
@@ -227,8 +227,8 @@ async function deleteTrigger(
 }
 
 function makeApiGatewayStatementData(
-    region: string | undefined,
-    account: string | undefined,
+    region: string,
+    account: string,
     apiGatewayId: string,
     functionId: string,
     fn: {
@@ -250,8 +250,8 @@ function makeApiGatewayStatementData(
 }
 
 function makeEventBridgeStatementData(
-    region: string | undefined,
-    account: string | undefined,
+    region: string,
+    account: string,
     functionId: string,
     prefix: string,
     service: string,
@@ -267,8 +267,8 @@ function makeEventBridgeStatementData(
 }
 
 function makeSnsStatementData(
-    region: string | undefined,
-    account: string | undefined,
+    region: string,
+    account: string,
     functionId: string,
     prefix: string,
     topic: string,

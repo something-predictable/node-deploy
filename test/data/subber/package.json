@@ -1,0 +1,12 @@
+{
+  "name": "subber",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@riddance/service": "0.2.8"
+  }
+}

@@ -99,7 +99,7 @@ const variables: Variable[] = [
         pattern: /\$ASK\(([^)]*)\)/gu,
         source: () => ({ environment: own }),
         value: (_prefix, service, [_, hint], key, env, _url) =>
-            env[service]?.[key] ?? missing(`ASK implementation: ${hint}`),
+            env[service]?.[key] ?? missing(hint ? `ASK implementation: ${hint}` : 'ASK'),
     },
     {
         pattern: /\$RANDOM\(([0-9]+)\)/gu,

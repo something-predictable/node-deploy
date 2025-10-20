@@ -1,11 +1,11 @@
 import { jsonResponse } from '@riddance/fetch'
 import type { Reflection } from '@riddance/host/reflect'
-import { awsRequest, type LocalEnv } from '../lite.js'
+import { awsRequest, type Context } from '../lite.js'
 
 export async function syncEventBridge(
-    env: LocalEnv,
-    region: string | undefined,
-    account: string | undefined,
+    context: Context,
+    region: string,
+    account: string,
     prefix: string,
     service: string,
     reflection: Reflection,
@@ -13,14 +13,23 @@ export async function syncEventBridge(
     await Promise.all(
         reflection.timers.map(async fn => {
             const fullName = `${prefix}-${service}-${fn.name}`
-            await createRule(env, region, account, prefix, fn.name, service, fullName, fn.schedule)
-            await createTarget(env, region, account, fn.name, fullName)
+            await createRule(
+                context,
+                region,
+                account,
+                prefix,
+                fn.name,
+                service,
+                fullName,
+                fn.schedule,
+            )
+            await createTarget(context, region, account, fn.name, fullName)
         }),
     )
 }
 
 async function createRule(
-    env: LocalEnv,
+    context: Context,
     _region: string | undefined,
     _account: string | undefined,
     prefix: string,
@@ -29,10 +38,10 @@ async function createRule(
     fullName: string,
     schedule: string,
 ) {
-    console.log(`creating event bridge rule ${name} for ${schedule}`)
+    context.log.trace(`creating event bridge rule ${name} for ${schedule}`)
     const r = await jsonResponse<{ RuleArn: string }>(
         awsRequest(
-            env,
+            context,
             'POST',
             'events',
             '',
@@ -56,16 +65,16 @@ async function createRule(
 }
 
 async function createTarget(
-    env: LocalEnv,
-    region: string | undefined,
-    account: string | undefined,
+    context: Context,
+    region: string,
+    account: string,
     name: string,
     fullName: string,
 ) {
-    console.log(`creating event bridge target ${name}`)
+    context.log.trace(`creating event bridge target ${name}`)
     const r = await jsonResponse<{ FailedEntryCount: number }>(
         awsRequest(
-            env,
+            context,
             'POST',
             'events',
             '',
@@ -90,5 +99,8 @@ async function createTarget(
 
 function scheduleExpression(schedule: string) {
     const [min, h, dom, m, dow] = schedule.split(' ')
-    return `cron(${min} ${h} ${dom} ${m} ${dow?.replace('*', '?')} *)`
+    if (!min || !h || !dom || !m || !dow) {
+        throw new Error('Invalid cron expression: ' + schedule)
+    }
+    return `cron(${min} ${h} ${dom} ${m} ${dow.replace('*', '?')} *)`
 }

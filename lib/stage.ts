@@ -29,7 +29,12 @@ const aws = {
 import { awsHandler } from '@riddance/aws-host/${type}'
 import * as host from '@riddance/aws-host/${type}'
 if('setMeta' in host) {
-    host.setMeta('${service.replaceAll("'", "\\'")}','${fn}','${revision}',${JSON.stringify(config)})
+    host.setMeta(${[
+        `'${service.replaceAll("'", "\\'")}'`,
+        `'${fn}'`,
+        revision ? `'${revision}'` : undefined,
+        JSON.stringify(config),
+    ].join(',')})
 }
 
 import('./${fn}.js')
@@ -40,22 +45,28 @@ export const handler = awsHandler
 }
 
 export async function stage(
+    log: {
+        trace: (message: string) => void
+        warn: (message: string) => void
+        error: (message: string) => void
+    },
+    stagePath: string | undefined,
     path: string,
     revision: string | undefined,
     implementations: { [fromPackage: string]: Implementation },
     service: string,
     types: { [name: string]: 'http' | 'timer' | 'event' },
 ) {
-    const stagePath = join(tmpdir(), 'riddance', 'stage', service)
-    console.log(`stage dir: ${stagePath}`)
-    console.log('staging...')
+    stagePath = stagePath ?? join(tmpdir(), 'riddance', 'stage', service)
+    log.trace(`stage dir: ${stagePath}`)
+    log.trace('staging...')
     const { functions, hashes, config } = await copyAndPatchProject(
         path,
         stagePath,
         implementations,
     )
 
-    console.log('syncing dependencies...')
+    log.trace('syncing dependencies...')
     await install(stagePath)
     hashes['package-lock.json'] = createHash('sha256')
         .update(await readFile(join(stagePath, 'package-lock.json')))
@@ -93,6 +104,7 @@ export async function stage(
     if (nonFunctionFilesUnchanged) {
         const code = [
             ...(await rollupAndMinify(
+                log,
                 aws,
                 path,
                 stagePath,
@@ -113,6 +125,7 @@ export async function stage(
         return code
     } else {
         const code = await rollupAndMinify(
+            log,
             aws,
             path,
             stagePath,
@@ -231,6 +244,11 @@ type Host = {
 }
 
 async function rollupAndMinify(
+    log: {
+        trace: (message: string) => void
+        warn: (message: string) => void
+        error: (message: string) => void
+    },
     host: Host,
     _path: string,
     stagePath: string,
@@ -243,6 +261,10 @@ async function rollupAndMinify(
     const minified = []
     let rollupCache: RollupCache | undefined
     for (const fn of functions) {
+        const functionType = types[fn]
+        if (!functionType) {
+            throw new Error(`Type of function ${fn} not determined.`)
+        }
         let seriousWarnings = false
         const bundler = await rollup({
             input: 'entry',
@@ -255,8 +277,7 @@ async function rollupAndMinify(
             },
             plugins: [
                 (virtual as unknown as (options: unknown) => Plugin)({
-                    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                    entry: aws.entry(types[fn]!, service, fn, revision, config),
+                    entry: aws.entry(functionType, service, fn, revision, config),
                 }),
                 nodeResolve({
                     exportConditions: ['node'],
@@ -276,19 +297,19 @@ async function rollupAndMinify(
                 ) {
                     return
                 }
-                console.warn(`${warning.code ?? warning.message} [${fn}]`)
+                log.warn(`${warning.code ?? warning.message} [${fn}]`)
                 if (
                     warning.code === 'CIRCULAR_DEPENDENCY' &&
                     warning.ids &&
                     warning.ids.length !== 0
                 ) {
-                    console.warn(warning.ids.map(p => relative(stagePath, p)).join(' -> '))
+                    log.warn(warning.ids.map(p => relative(stagePath, p)).join(' -> '))
                 } else {
                     if (warning.code) {
-                        console.warn(warning.message)
+                        log.warn(warning.message)
                     }
                     if (warning.frame) {
-                        console.warn(warning.frame)
+                        log.warn(warning.frame)
                     }
                 }
                 if (warning.code === 'UNRESOLVED_IMPORT') {
@@ -297,7 +318,9 @@ async function rollupAndMinify(
             },
         })
         rollupCache = bundler.cache
-        const { output } = await bundler.generate({
+        const {
+            output: [{ code, map }, { type, fileName } = {}, more],
+        } = await bundler.generate({
             format: 'cjs',
             compact: true,
             sourcemap: true,
@@ -313,31 +336,27 @@ async function rollupAndMinify(
         if (seriousWarnings) {
             throw new Error('Suspicious bundler warnings.')
         }
-        if (output.length !== 2) {
-            console.error(output[2])
+        if (type !== 'asset' || fileName !== '_virtual_entry.js.map') {
+            log.error(JSON.stringify(more))
             throw new Error('Weird')
         }
-        if (output[1]?.type !== 'asset' || output[1].fileName !== '_virtual_entry.js.map') {
-            console.error(output[2])
-            throw new Error('Weird')
-        }
-        const [{ code, map }] = output
         if (map?.version !== 3) {
             throw new Error('Source map missing.')
         }
-        minified.push(pack(host, stagePath, fn, code, { ...map, version: 3 }))
+        minified.push(pack(log, host, stagePath, fn, code, { ...map, version: 3 }))
     }
     return await Promise.all(minified)
 }
 
 async function pack(
+    log: { trace: (message: string) => void },
     host: Host,
     stagePath: string,
     fn: string,
     source: string,
     map: SourceMap & { version: 3 },
 ) {
-    console.log(`minifying ${fn}`)
+    log.trace(`minifying ${fn}`)
     const min = minify_sync(
         { [`${fn}.js`]: source },
         {
@@ -365,7 +384,7 @@ async function pack(
         throw new Error('Weird')
     }
     const code = host.patch ? host.patch(min.code) : min.code
-    console.log(`${fn} minified`)
+    log.trace(`${fn} minified`)
     await Promise.all([
         writeFile(join(stagePath, fn + '.min.js'), code),
         writeFile(

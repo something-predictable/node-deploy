@@ -4,10 +4,10 @@ import JSZip from 'jszip'
 import { createHash } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import { compare } from '../diff.js'
-import { LocalEnv, awsRequest, retry, retryConflict } from '../lite.js'
+import { type Context, awsRequest, retry, retryConflict } from '../lite.js'
 
 export async function syncLambda(
-    env: LocalEnv,
+    context: Context,
     prefix: string,
     currentFunctions: AwsFunctionLite[],
     reflection: Reflection,
@@ -26,7 +26,7 @@ export async function syncLambda(
     const created = await Promise.all(
         missing.map(fn =>
             createLambda(
-                env,
+                context,
                 prefix,
                 fn.name,
                 reflection.name,
@@ -38,11 +38,11 @@ export async function syncLambda(
             ),
         ),
     )
-    await Promise.all(surplus.map(fn => deleteLambda(env, prefix, reflection.name, fn.name)))
+    await Promise.all(surplus.map(fn => deleteLambda(context, prefix, reflection.name, fn.name)))
     await Promise.all(
         existing.map(awsFn =>
             updateLambda(
-                env,
+                context,
                 prefix,
                 awsFn.name,
                 reflection.name,
@@ -124,7 +124,7 @@ type AwsFunction = {
 }
 
 export async function getFunctions(
-    env: LocalEnv,
+    context: Context,
     prefix: string,
     service: string,
 ): Promise<AwsFunctionLite[]> {
@@ -135,7 +135,7 @@ export async function getFunctions(
             Functions: AwsFunction[]
             NextMarker: string | null
         }>(
-            awsRequest(env, 'GET', 'lambda', `/2015-03-31/functions/?${marker}`),
+            awsRequest(context, 'GET', 'lambda', `/2015-03-31/functions/?${marker}`),
             'Error listing functions',
         )
         funcs.push(...page.Functions)
@@ -170,7 +170,7 @@ type Config = {
 } & PackageJsonConfiguration
 
 async function createLambda(
-    env: LocalEnv,
+    context: Context,
     prefix: string,
     name: string,
     service: string,
@@ -183,11 +183,12 @@ async function createLambda(
     if (!code) {
         throw new Error('No code')
     }
-    console.log(`creating lambda ${name} (${code.size})`)
+    context.log.trace(`creating lambda ${name} (${code.size})`)
     const response = await jsonResponse<{ FunctionArn: string }>(
         retry(
+            context.log,
             () =>
-                awsRequest(env, 'POST', 'lambda', '/2015-03-31/functions', {
+                awsRequest(context, 'POST', 'lambda', '/2015-03-31/functions', {
                     FunctionName: `${prefix}-${service}-${name}`,
                     Code: { ZipFile: code.zipped },
                     PackageType: 'Zip',
@@ -208,7 +209,7 @@ async function createLambda(
 }
 
 async function updateLambda(
-    env: LocalEnv,
+    context: Context,
     prefix: string,
     name: string,
     service: string,
@@ -227,10 +228,10 @@ async function updateLambda(
     const cpus = lambdaArchitecture(config)
     const awsConfig = lambdaConfig(config, role, environment)
     if (!isDeepStrictEqual({ cpus, hash: code.sha256 }, { cpus: awsFn.cpus, hash: awsFn.hash })) {
-        console.log(`updating code for lambda ${name} (${awsFn.size} -> ${code.size})`)
+        context.log.trace(`updating code for lambda ${name} (${awsFn.size} -> ${code.size})`)
         await okResponse(
             awsRequest(
-                env,
+                context,
                 'PUT',
                 'lambda',
                 `/2015-03-31/functions/${prefix}-${service}-${name}/code`,
@@ -258,11 +259,11 @@ async function updateLambda(
             },
         )
     ) {
-        console.log('updating config for lambda ' + name)
+        context.log.trace('updating config for lambda ' + name)
         await retryConflict(() =>
             okResponse(
                 awsRequest(
-                    env,
+                    context,
                     'PUT',
                     'lambda',
                     `/2015-03-31/functions/${prefix}-${service}-${name}/configuration`,
@@ -274,10 +275,15 @@ async function updateLambda(
     }
 }
 
-async function deleteLambda(env: LocalEnv, prefix: string, service: string, name: string) {
-    console.log('deleting lambda ' + name)
+async function deleteLambda(context: Context, prefix: string, service: string, name: string) {
+    context.log.trace('deleting lambda ' + name)
     await okResponse(
-        awsRequest(env, 'DELETE', 'lambda', `/2015-03-31/functions/${prefix}-${service}-${name}`),
+        awsRequest(
+            context,
+            'DELETE',
+            'lambda',
+            `/2015-03-31/functions/${prefix}-${service}-${name}`,
+        ),
         'Error deleting lambda ' + name,
     )
 }
