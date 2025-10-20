@@ -1,6 +1,6 @@
 {
   "name": "@riddance/deploy",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "type": "module",
   "keywords": [
     "riddance",
@@ -17,9 +17,9 @@
   "files": [
     "*.js",
     "bin/*.js",
-    "bin/lib/*.js",
-    "bin/lib/aws/*.js",
-    "bin/lib/aws/services/*.js"
+    "lib/*.js",
+    "lib/aws/*.js",
+    "lib/aws/services/*.js"
   ],
   "bin": {
     "deploy": "bin/index.js"
