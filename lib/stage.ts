@@ -61,6 +61,7 @@ export async function stage(
     log.trace(`stage dir: ${stagePath}`)
     log.trace('staging...')
     const { functions, hashes, config } = await copyAndPatchProject(
+        log,
         path,
         stagePath,
         implementations,
@@ -141,6 +142,7 @@ export async function stage(
 }
 
 async function copyAndPatchProject(
+    log: { trace: (message: string) => void },
     path: string,
     target: string,
     implementations: { [fromPackage: string]: Implementation },
@@ -161,13 +163,21 @@ async function copyAndPatchProject(
         devDependencies?: unknown
     }
 
+    const substitutions = []
     for (const [pkg, sub] of Object.entries(implementations)) {
         if (packageJson.dependencies[pkg]) {
             delete packageJson.dependencies[pkg]
             packageJson.dependencies[sub.implementation] = sub.version
+            substitutions.push(`  ${pkg} -> ${sub.implementation} ${sub.version}`)
         }
     }
     delete packageJson.devDependencies
+    if (substitutions.length !== 0) {
+        log.trace('substituting')
+        for (const s of substitutions) {
+            log.trace(s)
+        }
+    }
 
     const updated = JSON.stringify(packageJson)
     hashes['package.json'] = createHash('sha256').update(updated).digest('base64')
