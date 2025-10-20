@@ -1,4 +1,4 @@
-import { fetchJson } from '@riddance/fetch'
+import { fetchJson, fetchOK } from '@riddance/fetch'
 import assert from 'node:assert/strict'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -17,9 +17,7 @@ describe('deploy', () => {
 
         const greeting = await fetchJson<{ message: string }>(
             frontDoorHost,
-            {
-                headers: {},
-            },
+            { headers },
             'Error fetching greeting',
         )
         assert.strictEqual(greeting.message, 'Hello from Riddance, World!')
@@ -30,6 +28,20 @@ describe('deploy', () => {
         await deployTestCase(log, 'tick-tock')
         assert.deepStrictEqual(log.issues, [])
     }).timeout(30_000)
+
+    it('should deploy big twice', async () => {
+        const log = new Log()
+        await deployTestCase(log, 'big')
+        const host = await deployTestCase(log, 'big')
+        assert.deepStrictEqual(log.issues, [])
+        assert.ok(host)
+
+        await Promise.all(
+            Array.from({ length: 32 }, (_, ix) =>
+                fetchOK(`${host}${ix + 1}`, { headers }, `Error fetching big #${ix + 1}`),
+            ),
+        )
+    }).timeout(60_000)
 })
 
 async function deployTestCase(log: Log, name: string) {
@@ -48,6 +60,10 @@ async function deployTestCase(log: Log, name: string) {
         stagePath,
     )
     return host
+}
+
+const headers = {
+    'user-agent': 'Riddance/1 (Deploy test)',
 }
 
 class Log {

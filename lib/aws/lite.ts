@@ -1,4 +1,4 @@
-import { missing, thrownHasStatus } from '@riddance/fetch'
+import { jsonResponse, missing, thrownHasStatus } from '@riddance/fetch'
 import { SignatureV4 } from '@smithy/signature-v4'
 import { createHash, createHmac } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
@@ -178,6 +178,29 @@ function retryDelay(value: string | null, def = 1000, jitter = 1000) {
         return Math.max(0, time - Date.now()) + extra
     }
     return def + extra
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
+export async function* pages<T, S>(
+    context: Context,
+    service: string,
+    path: string,
+    itemMap: (items: T[]) => S[],
+    errorMessage: string,
+) {
+    for (let next = ''; ; ) {
+        const page = await jsonResponse<{ items: T[]; nextToken?: string }>(
+            awsRequest(context, 'GET', service, path + next),
+            errorMessage,
+        )
+        for (const item of itemMap(page.items)) {
+            yield item
+        }
+        if (!page.nextToken) {
+            break
+        }
+        next = `?nextToken=${encodeURIComponent(page.nextToken)}`
+    }
 }
 
 function subdomain(service: string, region: string) {

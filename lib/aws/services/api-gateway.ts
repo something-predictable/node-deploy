@@ -2,7 +2,7 @@ import { jsonResponse, okResponse, throwOnNotOK } from '@riddance/fetch'
 import { Reflection } from '@riddance/host/reflect'
 import { isDeepStrictEqual } from 'node:util'
 import { compare } from '../diff.js'
-import { awsRequest, retryConflict, type Context } from '../lite.js'
+import { type Context, awsRequest, pages, retryConflict } from '../lite.js'
 
 export async function syncGateway(
     context: Context,
@@ -144,20 +144,14 @@ export type AwsGatewayApi = {
     }
 }
 
-export async function* getApis(context: Context, prefix: string) {
-    for (let next = ''; ; ) {
-        const page = await jsonResponse<{ items: AwsGatewayApi[]; nextToken?: string }>(
-            awsRequest(context, 'GET', 'apigateway', `/v2/apis/${next}`),
-            'Error getting APIs.',
-        )
-        for (const item of page.items.filter(a => a.name.startsWith(`${prefix}-`))) {
-            yield item
-        }
-        if (!page.nextToken) {
-            break
-        }
-        next = `?nextToken=${encodeURIComponent(page.nextToken)}`
-    }
+export function getApis(context: Context, prefix: string) {
+    return pages(
+        context,
+        'apigateway',
+        '/v2/apis/',
+        (items: AwsGatewayApi[]) => items.filter(a => a.name.startsWith(`${prefix}-`)),
+        'Error getting APIs.',
+    )
 }
 
 export async function getApi(context: Context, prefix: string, service: string) {
@@ -165,11 +159,11 @@ export async function getApi(context: Context, prefix: string, service: string) 
     for await (const api of getApis(context, prefix)) {
         if (api.name === name) {
             const [integrations, routes, stage] = await Promise.all([
-                getIntegrations(context, api.apiId, name.length + 1),
-                getRoutes(context, api.apiId),
+                Array.fromAsync(getIntegrations(context, api.apiId, name.length + 1)),
+                Array.fromAsync(getRoutes(context, api.apiId)),
                 getStage(context, api.apiId),
             ])
-            return { api, integrations, routes: routes.items, stage }
+            return { api, integrations, routes, stage }
         }
     }
     return { integrations: [], routes: [] }
@@ -184,18 +178,19 @@ export type AwsIntegration = {
     timeoutInMillis: number | undefined
 }
 
-async function getIntegrations(context: Context, apiId: string, prefixLength: number) {
-    const { items } = await jsonResponse<{
-        items: (AwsIntegration & { integrationId: string })[]
-    }>(
-        awsRequest(context, 'GET', 'apigateway', `/v2/apis/${apiId}/integrations`),
+function getIntegrations(context: Context, apiId: string, prefixLength: number) {
+    return pages(
+        context,
+        'apigateway',
+        `/v2/apis/${apiId}/integrations`,
+        (items: (AwsIntegration & { integrationId: string })[]) =>
+            items.map(i => ({
+                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                name: i.integrationUri.split(':').at(-1)!.slice(prefixLength),
+                ...i,
+            })),
         'Error getting API integrations.',
     )
-    return items.map(i => ({
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        name: i.integrationUri.split(':').at(-1)!.slice(prefixLength),
-        ...i,
-    }))
 }
 
 function asIntegration(
@@ -312,11 +307,12 @@ function trimTrailingSlash(pathPattern: string) {
     return pathPattern
 }
 
-async function getRoutes(context: Context, apiId: string) {
-    return await jsonResponse<{
-        items: (AwsRoute & { routeId: string })[]
-    }>(
-        awsRequest(context, 'GET', 'apigateway', `/v2/apis/${apiId}/routes`),
+function getRoutes(context: Context, apiId: string) {
+    return pages(
+        context,
+        'apigateway',
+        `/v2/apis/${apiId}/routes`,
+        (routes: (AwsRoute & { routeId: string })[]) => routes,
         'Error getting API routes.',
     )
 }
