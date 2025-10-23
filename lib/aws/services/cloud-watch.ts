@@ -29,7 +29,7 @@ export function logQueryLink(
             source: names.map(name => `/aws/lambda/${prefix}-${service}-${name}`),
             lang: 'CWLI',
         }),
-    )}`
+    ).replaceAll("'", '%27')}`
 }
 
 function serializeValue(v: Json): string {
