@@ -32,7 +32,7 @@ export async function syncLambda(
                 reflection.name,
                 reflection.revision,
                 role,
-                fn.config,
+                fn,
                 environment,
                 zipped[fn.name],
             ),
@@ -47,7 +47,7 @@ export async function syncLambda(
                 awsFn.name,
                 reflection.name,
                 role,
-                functions.find(fn => fn.name === awsFn.name)?.config,
+                functions.find(fn => fn.name === awsFn.name),
                 awsFn,
                 environment,
                 zipped[awsFn.name],
@@ -163,11 +163,14 @@ export async function getFunctions(
         }))
 }
 
-type Config = {
-    memory?: string
-    compute?: string
-    timeout?: number
-} & PackageJsonConfiguration
+type Target = {
+    config: {
+        memory?: string
+        compute?: string
+        timeout?: number
+    } & PackageJsonConfiguration
+    method?: string
+}
 
 async function createLambda(
     context: Context,
@@ -176,7 +179,7 @@ async function createLambda(
     service: string,
     revision: string | undefined,
     role: string,
-    config: Config,
+    target: Target,
     environment: { [key: string]: string },
     code?: { zipped: string; sha256: string; size: string },
 ) {
@@ -192,8 +195,8 @@ async function createLambda(
                     FunctionName: `${prefix}-${service}-${name}`,
                     Code: { ZipFile: code.zipped },
                     PackageType: 'Zip',
-                    Architectures: lambdaArchitecture(config),
-                    ...lambdaConfig(config, role, environment),
+                    Architectures: lambdaArchitecture(target),
+                    ...lambdaConfig(target, role, environment),
                     Tags: {
                         framework: 'riddance',
                         environment: prefix,
@@ -214,7 +217,7 @@ async function updateLambda(
     name: string,
     service: string,
     role: string,
-    config: Config | undefined,
+    target: Target | undefined,
     awsFn: AwsFunctionLite,
     environment: { [key: string]: string },
     code?: { zipped: string; sha256: string; size: string },
@@ -222,11 +225,11 @@ async function updateLambda(
     if (!code) {
         throw new Error('No code')
     }
-    if (!config) {
+    if (!target) {
         throw new Error('No config')
     }
-    const cpus = lambdaArchitecture(config)
-    const awsConfig = lambdaConfig(config, role, environment)
+    const cpus = lambdaArchitecture(target)
+    const awsConfig = lambdaConfig(target, role, environment)
     if (!isDeepStrictEqual({ cpus, hash: code.sha256 }, { cpus: awsFn.cpus, hash: awsFn.hash })) {
         context.log.trace(`updating code for lambda ${name} (${awsFn.size} -> ${code.size})`)
         await okResponse(
@@ -288,13 +291,13 @@ async function deleteLambda(context: Context, prefix: string, service: string, n
     )
 }
 
-function lambdaConfig(config: Config, role: string, environment: { [key: string]: string }) {
+function lambdaConfig(target: Target, role: string, environment: { [key: string]: string }) {
     return {
         Role: role,
-        Runtime: getRuntime(config),
+        Runtime: getRuntime(target),
         Handler: 'index.handler',
-        Timeout: config.timeout ?? 15,
-        MemorySize: config.compute === 'high' || config.memory === 'high' ? 3008 : 128,
+        Timeout: target.config.timeout ?? 15,
+        MemorySize: memorySize(target),
         TracingConfig: {
             Mode: 'PassThrough',
         },
@@ -304,7 +307,7 @@ function lambdaConfig(config: Config, role: string, environment: { [key: string]
     }
 }
 
-function getRuntime(config: Config) {
+function getRuntime({ config }: Target) {
     switch (config.nodeVersion?.slice(0, 4)) {
         case '>=22':
             return 'nodejs22.x'
@@ -319,11 +322,21 @@ function getRuntime(config: Config) {
     }
 }
 
-function lambdaArchitecture(config: Config) {
+function memorySize({ config, method }: Target) {
+    if (!config.compute && !config.memory && method) {
+        return 256
+    }
+    if (config.compute === 'high' || config.memory === 'high') {
+        return 3008
+    }
+    return 128
+}
+
+function lambdaArchitecture({ config, method }: Target) {
     switch (
         resolveCpu(
             config,
-            config.compute === 'high'
+            config.compute === 'high' || (config.compute === undefined && method === 'GET')
                 ? ['x64', 'x32', 'arm64', 'arm']
                 : ['arm64', 'arm', 'x64', 'x32'],
         )
