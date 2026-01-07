@@ -102,6 +102,6 @@ export async function sync(
             [...reflection.http, ...reflection.timers, ...reflection.events].map(fn => fn.name),
             reflection.revision,
         ),
-        host: gatewayId && `https://${gatewayId}.execute-api.eu-central-1.amazonaws.com/`,
+        host: gatewayId && `https://${gatewayId}.execute-api.${region}.amazonaws.com/`,
     }
 }
