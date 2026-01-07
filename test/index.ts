@@ -1,7 +1,8 @@
-import { fetchJson, fetchOK } from '@riddance/fetch'
+import { fetchJson, fetchOK, thrownHasStatus } from '@riddance/fetch'
 import assert from 'node:assert/strict'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { setTimeout } from 'node:timers/promises'
 import { deploy } from '../index.js'
 import { localAwsEnv } from '../lib/aws/lite.js'
 import { install } from '../lib/npm.js'
@@ -36,10 +37,20 @@ describe('deploy', () => {
         assert.deepStrictEqual(log.issues, [])
         assert.ok(host)
 
-        await Promise.all(
+        const result = await Promise.allSettled(
             Array.from({ length: 32 }, (_, ix) =>
-                fetchOK(`${host}${ix + 1}`, { headers }, `Error fetching big #${ix + 1}`),
+                retry(() => fetchOK(`${host}${ix + 1}`, { headers }, `big #${ix + 1} failed`)),
             ),
+        )
+        assert.deepStrictEqual(
+            result
+                .filter(r => r.status === 'rejected')
+                .map(
+                    r =>
+                        `${r.reason.message} (GET ${r.reason.response?.url}, status ${r.reason.response?.status})`,
+                ),
+            [],
+            'Error fetching',
         )
     }).timeout(60_000)
 })
@@ -60,6 +71,21 @@ async function deployTestCase(log: Log, name: string) {
         stagePath,
     )
     return host
+}
+
+async function retry(fn: () => Promise<void>) {
+    for (let i = 0; ; ++i) {
+        try {
+            await fn()
+            return
+        } catch (e) {
+            if (thrownHasStatus(e, 503) && i < 5) {
+                await setTimeout(1000)
+                continue
+            }
+            throw e
+        }
+    }
 }
 
 const headers = {
