@@ -1,4 +1,4 @@
-import { jsonResponse, missing, thrownHasStatus } from '@riddance/fetch'
+import { jsonResponse, thrownHasStatus } from '@riddance/fetch'
 import { SignatureV4 } from '@smithy/signature-v4'
 import { createHash, createHmac } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
@@ -24,7 +24,7 @@ export async function localAwsEnv(
         AWS_SESSION_TOKEN: process.env.AWS_SESSION_TOKEN,
     }
     if (AWS_REGION && AWS_ACCESS_KEY_ID && AWS_SECRET_ACCESS_KEY) {
-        return { AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY }
+        return { AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN }
     }
     const configLines =
         cachedConfigLines ??
@@ -290,4 +290,8 @@ function castSourceData(data: SourceData) {
         return Buffer.from(data.buffer, data.byteOffset, data.byteLength)
     }
     return Buffer.from(data)
+}
+
+function missing(what?: string): never {
+    throw new Error(what ? `Missing ${what}.` : 'Missing.')
 }

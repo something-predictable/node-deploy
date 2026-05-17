@@ -1,4 +1,3 @@
-import { missing } from '@riddance/fetch'
 import { createPublicKey, generateKeyPairSync, randomBytes } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -245,4 +244,8 @@ async function fetchBaseUrls(prefix: string, services: string[], resolver: Resol
             services.map(async s => [s, await resolver.getBaseUrl(prefix, s)] as const),
         ),
     )
+}
+
+function missing(what?: string): never {
+    throw new Error(what ? `Missing ${what}.` : 'Missing.')
 }

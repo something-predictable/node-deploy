@@ -329,7 +329,7 @@ async function rollupAndMinify(
         })
         rollupCache = bundler.cache
         const {
-            output: [{ code, map }, { type, fileName } = {}, more],
+            output: [{ code, map }, virtualEntry, more],
         } = await bundler.generate({
             format: 'cjs',
             compact: true,
@@ -346,6 +346,7 @@ async function rollupAndMinify(
         if (seriousWarnings) {
             throw new Error('Suspicious bundler warnings.')
         }
+        const { type, fileName } = virtualEntry ?? {}
         if (type !== 'asset' || fileName !== '_virtual_entry.js.map') {
             log.error(JSON.stringify(more))
             throw new Error('Weird')

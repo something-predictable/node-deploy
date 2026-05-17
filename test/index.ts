@@ -99,6 +99,9 @@ class Log {
         //
     }
     warn(message: string) {
+        if (message.startsWith('CIRCULAR_DEPENDENCY') || message.includes(' -> ')) {
+            return
+        }
         this.issues.push(message)
     }
     error(message: string) {

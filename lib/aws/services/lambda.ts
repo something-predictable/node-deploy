@@ -98,7 +98,7 @@ type AwsFunction = {
     LastModified: string
     FunctionArn: string
     FunctionName: string
-    Runtime: 'nodejs18.x' | 'nodejs20.x' | 'nodejs22.x'
+    Runtime: 'nodejs18.x' | 'nodejs20.x' | 'nodejs22.x' | 'nodejs24.x'
     Version: '$LATEST'
     PackageType: 'Zip'
     MemorySize: number
@@ -309,6 +309,8 @@ function lambdaConfig(target: Target, role: string, environment: { [key: string]
 
 function getRuntime({ config }: Target) {
     switch (config.nodeVersion?.slice(0, 4)) {
+        case '>=24':
+            return 'nodejs24.x'
         case '>=22':
             return 'nodejs22.x'
         case '>=20':
@@ -317,7 +319,7 @@ function getRuntime({ config }: Target) {
             return 'nodejs18.x'
         default:
             throw new Error(
-                'Unsupported engine; please specify "node": ">=18", "node": ">=20", or "node": ">=22" as an engine in your package.json.',
+                'Unsupported engine; please specify "node": ">=18", "node": ">=20", "node": ">=22", or "node": ">=24" as an engine in your package.json.',
             )
     }
 }
